@@ -7,10 +7,12 @@
 # - desbloquear usuarios
 # - ver detalle de un vendedor
 # - ver y gestionar productos de un vendedor
+# - importar publicaciones desde links
 # =========================================================
 
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request
 from database import get_db
+from utils.importers import analyze_publication_link
 
 admin_routes = Blueprint("admin", __name__)
 
@@ -167,3 +169,124 @@ def unblock_user(user_id):
         return redirect(url_for("admin.admin_user_detail", user_id=user_id))
 
     return redirect(url_for("admin.admin_dashboard"))
+
+
+@admin_routes.route("/admin/import-post", methods=["GET", "POST"])
+def admin_import_post():
+    if "user_id" not in session:
+        return redirect(url_for("auth.login"))
+
+    if not es_admin():
+        flash("No tenés permisos para esta sección.", "danger")
+        return redirect(url_for("products.seller_dashboard"))
+
+    extracted = None
+
+    if request.method == "POST":
+        action = request.form.get("action", "").strip()
+
+        # =====================================================
+        # ANALIZAR LINK
+        # =====================================================
+        if action == "analyze":
+            source_url = request.form.get("source_url", "").strip()
+            source_type = request.form.get("source_type", "").strip()
+
+            if not source_url:
+                flash("Pegá un link para analizar.", "danger")
+                return render_template("admin_import_post.html", extracted=None)
+
+            try:
+                extracted = analyze_publication_link(source_url, source_type)
+                flash("Link analizado correctamente. Revisá y corregí antes de publicar.", "success")
+            except Exception as e:
+                flash(f"No se pudo analizar el link. Error: {str(e)}", "danger")
+                return render_template("admin_import_post.html", extracted=None)
+
+            return render_template("admin_import_post.html", extracted=extracted)
+
+        # =====================================================
+        # PUBLICAR EN OFERTAS SANTIAGO
+        # =====================================================
+        if action == "publish":
+            source_type = request.form.get("source_type", "").strip()
+            source_url = request.form.get("source_url", "").strip()
+            titulo = request.form.get("titulo", "").strip()
+            descripcion = request.form.get("descripcion", "").strip()
+            imagen = request.form.get("imagen", "").strip()
+            tienda_nombre = request.form.get("tienda_nombre", "").strip()
+            precio_raw = request.form.get("precio", "").strip()
+            ciudad = request.form.get("ciudad", "").strip()
+            whatsapp_link = request.form.get("whatsapp_link", "").strip()
+            instagram_link = request.form.get("instagram_link", "").strip()
+            facebook_link = request.form.get("facebook_link", "").strip()
+
+            if not titulo:
+                flash("El título es obligatorio.", "danger")
+                extracted = request.form.to_dict()
+                return render_template("admin_import_post.html", extracted=extracted)
+
+            if not tienda_nombre:
+                flash("El nombre de la tienda o usuario es obligatorio.", "danger")
+                extracted = request.form.to_dict()
+                return render_template("admin_import_post.html", extracted=extracted)
+
+            if not ciudad:
+                flash("La ciudad es obligatoria.", "danger")
+                extracted = request.form.to_dict()
+                return render_template("admin_import_post.html", extracted=extracted)
+
+            precio = 0
+            if precio_raw:
+                try:
+                    precio = float(precio_raw.replace(".", "").replace(",", "."))
+                except ValueError:
+                    flash("El precio no tiene un formato válido.", "danger")
+                    extracted = request.form.to_dict()
+                    return render_template("admin_import_post.html", extracted=extracted)
+
+            descripcion_final = descripcion.strip()
+            if source_url:
+                descripcion_final += f"\n\nOrigen: {source_url}"
+
+            conn = get_db()
+            c = conn.cursor()
+
+            c.execute("""
+                INSERT INTO products (
+                    user_id,
+                    titulo,
+                    descripcion,
+                    precio,
+                    imagen,
+                    tienda_nombre,
+                    ciudad,
+                    whatsapp_link,
+                    instagram_link,
+                    facebook_link,
+                    active,
+                    sold
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                session["user_id"],
+                titulo,
+                descripcion_final,
+                precio,
+                imagen,
+                tienda_nombre,
+                ciudad,
+                whatsapp_link,
+                instagram_link,
+                facebook_link,
+                1,
+                0
+            ))
+
+            conn.commit()
+            conn.close()
+
+            flash("Publicación importada y publicada correctamente.", "success")
+            return redirect(url_for("admin.admin_import_post"))
+
+    return render_template("admin_import_post.html", extracted=extracted)

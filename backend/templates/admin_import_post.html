@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Importar publicación | OFERTAS SANTIAGO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        .box {
+            background: #101b2f;
+            border-radius: 22px;
+            padding: 25px;
+            border: 1px solid rgba(29,211,255,0.18);
+            margin-bottom: 20px;
+        }
+        .title {
+            color: #1dd3ff;
+            font-weight: 900;
+        }
+        .form-control, .form-select, textarea.form-control {
+            background: #0a1322;
+            color: white;
+            border: 1px solid #294160;
+        }
+        .form-control:focus, .form-select:focus, textarea.form-control:focus {
+            background: #0a1322;
+            color: white;
+            border-color: #1dd3ff;
+            box-shadow: none;
+        }
+        .preview-image {
+            width: 100%;
+            max-height: 380px;
+            object-fit: contain;
+            background: white;
+            border-radius: 14px;
+            padding: 8px;
+        }
+        .help-text {
+            color: #9fb1c8;
+            font-size: 0.92rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            <div>
+                <h2 class="title mb-1">Importar publicación</h2>
+                <div>{{ session["email"] }}</div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="/admin/dashboard" class="btn btn-outline-light">Volver al admin</a>
+                <a href="/seller/dashboard" class="btn btn-info text-dark">Mi panel vendedor</a>
+                <a href="/logout" class="btn btn-danger">Cerrar sesión</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="box">
+            <h4 class="mb-3">1. Analizar link</h4>
+
+            <form method="POST">
+                <input type="hidden" name="action" value="analyze">
+
+                <div class="row">
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label">URL de origen</label>
+                        <input
+                            type="text"
+                            name="source_url"
+                            class="form-control"
+                            placeholder="Pegá el link de la publicación"
+                            value="{{ extracted['source_url'] if extracted else '' }}"
+                            required
+                        >
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tipo de origen</label>
+                        <select name="source_type" class="form-select" required>
+                            <option value="instagram" {% if extracted and extracted.get('source_type') == 'instagram' %}selected{% endif %}>Instagram</option>
+                            <option value="facebook" {% if extracted and extracted.get('source_type') == 'facebook' %}selected{% endif %}>Facebook</option>
+                            <option value="otro" {% if extracted and extracted.get('source_type') == 'otro' %}selected{% endif %}>Otro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success">Analizar link</button>
+
+                <div class="help-text mt-3">
+                    El sistema intenta sacar imagen, texto, tienda y precio. Después lo revisás antes de publicar.
+                </div>
+            </form>
+        </div>
+
+        {% if extracted %}
+        <div class="box">
+            <h4 class="mb-3">2. Revisar y publicar</h4>
+
+            <form method="POST">
+                <input type="hidden" name="action" value="publish">
+                <input type="hidden" name="source_type" value="{{ extracted.get('source_type', '') }}">
+                <input type="hidden" name="source_url" value="{{ extracted.get('source_url', '') }}">
+
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        {% if extracted.get('imagen') %}
+                            <img src="{{ extracted.get('imagen') }}" class="preview-image" alt="imagen detectada">
+                        {% else %}
+                            <div class="alert alert-warning mb-0">No se pudo detectar imagen automáticamente.</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Link original</label>
+                            <input type="text" class="form-control" value="{{ extracted.get('source_url', '') }}" readonly>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Imagen detectada (URL)</label>
+                            <input type="text" name="imagen" class="form-control" value="{{ extracted.get('imagen', '') }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Tienda / usuario</label>
+                            <input type="text" name="tienda_nombre" class="form-control" value="{{ extracted.get('tienda_nombre', '') }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Precio</label>
+                            <input type="text" name="precio" class="form-control" value="{{ extracted.get('precio', '') }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Ciudad</label>
+                            <input type="text" name="ciudad" class="form-control" placeholder="Ej: Santiago Capital" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Título</label>
+                    <input type="text" name="titulo" class="form-control" value="{{ extracted.get('titulo', '') }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Descripción / caption</label>
+                    <textarea name="descripcion" class="form-control" rows="5">{{ extracted.get('descripcion', '') }}</textarea>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">WhatsApp link</label>
+                        <input type="text" name="whatsapp_link" class="form-control" placeholder="https://wa.me/...">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Instagram link</label>
+                        <input type="text" name="instagram_link" class="form-control" placeholder="https://instagram.com/...">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Facebook link</label>
+                        <input type="text" name="facebook_link" class="form-control" placeholder="https://facebook.com/...">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-info text-dark fw-bold">
+                    Publicar en OFERTAS SANTIAGO
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
