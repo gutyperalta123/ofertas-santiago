@@ -8,17 +8,47 @@
 # - ver detalle de un vendedor
 # - ver y gestionar productos de un vendedor
 # - importar publicaciones desde links
+# - subir imagen manual en importación admin
 # =========================================================
 
-from flask import Blueprint, render_template, session, redirect, url_for, flash, request
+import os
+import uuid
+from werkzeug.utils import secure_filename
+from flask import Blueprint, render_template, session, redirect, url_for, flash, request, current_app
 from database import get_db
 from utils.importers import analyze_publication_link
 
 admin_routes = Blueprint("admin", __name__)
 
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+
 
 def es_admin():
     return session.get("role") == "admin"
+
+
+def archivo_permitido(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def guardar_imagen_admin(file_storage):
+    if not file_storage or not file_storage.filename:
+        return ""
+
+    if not archivo_permitido(file_storage.filename):
+        return None
+
+    filename_seguro = secure_filename(file_storage.filename)
+    extension = filename_seguro.rsplit(".", 1)[1].lower()
+    nuevo_nombre = f"{uuid.uuid4().hex}.{extension}"
+
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    os.makedirs(upload_folder, exist_ok=True)
+
+    ruta_completa = os.path.join(upload_folder, nuevo_nombre)
+    file_storage.save(ruta_completa)
+
+    return f"/static/uploads/{nuevo_nombre}"
 
 
 @admin_routes.route("/admin/dashboard")
@@ -185,9 +215,6 @@ def admin_import_post():
     if request.method == "POST":
         action = request.form.get("action", "").strip()
 
-        # =====================================================
-        # ANALIZAR LINK
-        # =====================================================
         if action == "analyze":
             source_url = request.form.get("source_url", "").strip()
             source_type = request.form.get("source_type", "").strip()
@@ -205,9 +232,6 @@ def admin_import_post():
 
             return render_template("admin_import_post.html", extracted=extracted)
 
-        # =====================================================
-        # PUBLICAR EN OFERTAS SANTIAGO
-        # =====================================================
         if action == "publish":
             source_type = request.form.get("source_type", "").strip()
             source_url = request.form.get("source_url", "").strip()
@@ -220,6 +244,7 @@ def admin_import_post():
             whatsapp_link = request.form.get("whatsapp_link", "").strip()
             instagram_link = request.form.get("instagram_link", "").strip()
             facebook_link = request.form.get("facebook_link", "").strip()
+            imagen_file = request.files.get("imagen_file")
 
             if not titulo:
                 flash("El título es obligatorio.", "danger")
@@ -245,21 +270,22 @@ def admin_import_post():
                     extracted = request.form.to_dict()
                     return render_template("admin_import_post.html", extracted=extracted)
 
-            # =================================================
-            # NO mostramos el link crudo en la descripción
-            # =================================================
             descripcion_final = descripcion.strip()
 
-            # =================================================
-            # Si no completaste redes, usamos el link original
-            # como botón según el tipo de origen
-            # =================================================
             if source_url:
                 if source_type == "instagram" and not instagram_link:
                     instagram_link = source_url
-
                 elif source_type == "facebook" and not facebook_link:
                     facebook_link = source_url
+
+            # Si sube una imagen propia, tiene prioridad sobre la detectada
+            if imagen_file and imagen_file.filename:
+                imagen_subida = guardar_imagen_admin(imagen_file)
+                if imagen_subida is None:
+                    flash("La imagen debe ser PNG, JPG, JPEG o WEBP.", "danger")
+                    extracted = request.form.to_dict()
+                    return render_template("admin_import_post.html", extracted=extracted)
+                imagen = imagen_subida
 
             conn = get_db()
             c = conn.cursor()

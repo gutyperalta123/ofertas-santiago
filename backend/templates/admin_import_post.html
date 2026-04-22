@@ -117,7 +117,7 @@
         <div class="box">
             <h4 class="mb-3">2. Revisar y publicar</h4>
 
-            <form method="POST">
+            <form method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="publish">
                 <input type="hidden" name="source_type" value="{{ extracted.get('source_type', '') }}">
                 <input type="hidden" name="source_url" value="{{ extracted.get('source_url', '') }}">
@@ -129,7 +129,7 @@
                         {% else %}
                             <div class="warning-box">
                                 <strong>No se pudo detectar imagen automáticamente.</strong><br>
-                                Más abajo podés pegar manualmente una URL de imagen antes de publicar.
+                                Más abajo podés pegar una URL manual o subir una imagen propia antes de publicar.
                             </div>
                         {% endif %}
                     </div>
@@ -146,13 +146,21 @@
                         </div>
 
                         <div class="mb-3">
+                            <label class="form-label">O subir tu propia imagen</label>
+                            <input type="file" name="imagen_file" class="form-control" accept="image/png,image/jpeg,image/jpg,image/webp">
+                            <div class="help-text mt-2">
+                                Si subís una imagen acá, tendrá prioridad sobre la imagen detectada o pegada por URL.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
                             <label class="form-label">Tienda / usuario</label>
                             <input type="text" name="tienda_nombre" class="form-control" value="{{ extracted.get('tienda_nombre', '') }}" required>
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label">Precio</label>
-                            <input type="text" name="precio" class="form-control" value="{{ extracted.get('precio', '') }}">
+                            <input type="text" name="precio" id="precio" class="form-control" value="{{ extracted.get('precio', '') }}" inputmode="numeric">
                         </div>
 
                         <div class="mb-3">
@@ -196,5 +204,21 @@
         </div>
         {% endif %}
     </div>
+
+    <script>
+        function formatearMiles(valor) {
+            const soloNumeros = valor.replace(/\D/g, "");
+            if (!soloNumeros) return "";
+            return soloNumeros.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        }
+
+        const precioInput = document.getElementById("precio");
+
+        if (precioInput) {
+            precioInput.addEventListener("input", function () {
+                this.value = formatearMiles(this.value);
+            });
+        }
+    </script>
 </body>
 </html>
