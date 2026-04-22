@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OFERTAS SANTIAGO</title>
+    <link rel="icon" type="image/png" href="/static/amanecer.png">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+    <style>
+        :root {
+            --bg-dark: #081120;
+            --bg-card: #101b2f;
+            --electric-blue: #1dd3ff;
+            --neon-green: #00ff88;
+            --text-main: #e7eef7;
+            --muted: #9fb1c8;
+            --whatsapp: #25D366;
+            --instagram: #E1306C;
+            --facebook: #1877F2;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
+            color: var(--text-main);
+            font-family: Arial, Helvetica, sans-serif;
+            padding-top: 72px;
+        }
+
+        .navbar {
+            background-color: rgba(5, 10, 20, 0.95);
+            border-bottom: 1px solid rgba(29, 211, 255, 0.22);
+            backdrop-filter: blur(10px);
+        }
+
+        .brand-text {
+            color: var(--electric-blue);
+            text-shadow: 0 0 14px rgba(29, 211, 255, 0.45);
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+
+        .hero-section {
+            background:
+                linear-gradient(rgba(5, 10, 20, 0.70), rgba(5, 10, 20, 0.82)),
+                url('https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=1400&q=80');
+            background-size: cover;
+            background-position: center;
+            padding: 64px 20px 40px;
+            border-radius: 28px;
+            margin-bottom: 34px;
+            text-align: center;
+            border: 1px solid rgba(29, 211, 255, 0.12);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+        }
+
+        .hero-title {
+            font-size: 2.8rem;
+            font-weight: 900;
+            margin-bottom: 12px;
+        }
+
+        .hero-subtitle {
+            color: #d6f7ff;
+            font-size: 1.1rem;
+            max-width: 820px;
+            margin: 0 auto 24px;
+        }
+
+        .search-lg {
+            background-color: rgba(16, 26, 45, 0.96);
+            border: 1px solid var(--electric-blue);
+            color: white;
+            border-radius: 50px;
+            padding: 15px 24px;
+        }
+
+        .search-lg::placeholder {
+            color: #b8d3de;
+        }
+
+        .filter-select {
+            background-color: rgba(16, 26, 45, 0.96);
+            border: 1px solid var(--electric-blue);
+            color: white;
+            border-radius: 50px;
+            padding: 15px 20px;
+        }
+
+        .filter-select:focus,
+        .search-lg:focus {
+            background-color: rgba(16, 26, 45, 0.96);
+            color: white;
+            border-color: var(--electric-blue);
+            box-shadow: none;
+        }
+
+        .filter-select option {
+            color: black;
+        }
+
+        .hero-actions .btn {
+            border-radius: 999px;
+            padding: 10px 18px;
+            font-weight: 700;
+        }
+
+        .offcanvas {
+            background-color: var(--bg-dark);
+            border-right: 1px solid var(--electric-blue);
+        }
+
+        .list-group-item {
+            background: transparent;
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            cursor: pointer;
+        }
+
+        .list-group-item:hover {
+            background: rgba(29, 211, 255, 0.08);
+            color: var(--electric-blue);
+        }
+
+        .sub-menu {
+            padding-left: 34px;
+            background: rgba(255, 255, 255, 0.02);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 900;
+            margin-bottom: 8px;
+        }
+
+        .section-subtitle {
+            color: var(--muted);
+            margin-bottom: 24px;
+        }
+
+        .card-oferta {
+            background-color: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 22px;
+            overflow: hidden;
+            height: 100%;
+            transition: 0.25s;
+            box-shadow: 0 14px 32px rgba(0,0,0,0.18);
+        }
+
+        .card-oferta:hover {
+            border-color: var(--electric-blue);
+            transform: translateY(-5px);
+        }
+
+        .img-container {
+            background: #fff;
+            height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            cursor: pointer;
+        }
+
+        .img-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            object-position: center;
+            border-radius: 12px;
+            background: #fff;
+        }
+
+        .price {
+            color: var(--neon-green);
+            font-size: 1.55rem;
+            font-weight: 900;
+        }
+
+        .tag-city, .tag-store {
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+        }
+
+        .tag-city {
+            background: rgba(29, 211, 255, 0.12);
+            color: #8ceeff;
+        }
+
+        .tag-store {
+            background: rgba(0,255,136,0.12);
+            color: #92ffcf;
+        }
+
+        .social-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn-social {
+            border-radius: 999px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            padding: 8px 12px;
+            text-decoration: none;
+            color: white;
+            transition: 0.2s;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-social:hover {
+            transform: translateY(-1px);
+            color: white;
+        }
+
+        .btn-whatsapp { background: var(--whatsapp); }
+        .btn-instagram { background: var(--instagram); }
+        .btn-facebook { background: var(--facebook); }
+
+        .empty-box {
+            background: rgba(255,255,255,0.03);
+            border: 1px dashed rgba(29, 211, 255, 0.35);
+            border-radius: 20px;
+            padding: 40px 20px;
+            text-align: center;
+            color: #dce8f7;
+        }
+
+        .custom-modal-content {
+            background: #09111d;
+            color: white;
+            border: 1px solid rgba(29, 211, 255, 0.25);
+            border-radius: 20px;
+        }
+
+        .footer-space {
+            height: 40px;
+        }
+
+        @media (max-width: 768px) {
+            .hero-title { font-size: 2rem; }
+            .hero-subtitle { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark fixed-top">
+        <div class="container">
+            <button class="navbar-toggler border-0" type="button" data-bs-toggle="offcanvas" data-bs-target="#menuLateral">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <span class="navbar-brand brand-text mx-auto">OFERTAS SANTIAGO</span>
+        </div>
+    </nav>
+
+    <div class="offcanvas offcanvas-start" id="menuLateral">
+        <div class="offcanvas-header border-bottom border-secondary">
+            <h5 class="offcanvas-title brand-text">MENÚ</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+        </div>
+
+        <div class="offcanvas-body p-0">
+            <div class="list-group">
+                <div class="list-group-item" onclick="location.href='/'">
+                    <i class="bi bi-house-door me-2"></i>Inicio
+                </div>
+
+                <div class="list-group-item" onclick="scrollAProductos()">
+                    <i class="bi bi-grid me-2"></i>Productos
+                </div>
+
+                <div class="list-group-item" data-bs-toggle="collapse" data-bs-target="#menuCiudades">
+                    <i class="bi bi-geo-alt me-2"></i>Ciudad
+                </div>
+
+                <div class="collapse sub-menu" id="menuCiudades"></div>
+
+                {% if session.get("user_id") %}
+                    {% if session.get("role") == "admin" %}
+                        <div class="list-group-item" onclick="location.href='/admin/dashboard'">
+                            <i class="bi bi-shield-lock me-2"></i>Panel admin
+                        </div>
+                    {% endif %}
+
+                    <div class="list-group-item" onclick="location.href='/seller/dashboard'">
+                        <i class="bi bi-shop me-2"></i>Mi panel
+                    </div>
+
+                    <div class="list-group-item" onclick="location.href='/logout'">
+                        <i class="bi bi-box-arrow-right me-2"></i>Cerrar sesión
+                    </div>
+                {% else %}
+                    <div class="list-group-item" onclick="abrirVender()">
+                        <i class="bi bi-shop me-2"></i>Vender
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-4">
+        <div class="hero-section">
+            <h1 class="hero-title">OFERTAS SANTIAGO</h1>
+            <p class="hero-subtitle">
+                Encontrá productos, negocios y ofertas por ciudad.
+            </p>
+
+            <div class="row g-3 justify-content-center align-items-center">
+                <div class="col-12 col-lg-5">
+                    <input
+                        type="text"
+                        id="buscador"
+                        class="form-control search-lg"
+                        placeholder="Buscar por producto, ciudad o tienda..."
+                    >
+                </div>
+
+                <div class="col-12 col-lg-3">
+                    <select id="filtroCiudad" class="form-select filter-select">
+                        <option value="">Todas las ciudades</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-lg-2">
+                    <button onclick="aplicarFiltros()" class="btn btn-info w-100 fw-bold rounded-pill">
+                        Buscar
+                    </button>
+                </div>
+            </div>
+
+            <div class="text-center mt-4 hero-actions d-flex flex-wrap gap-2 justify-content-center">
+                <button onclick="scrollAProductos()" class="btn btn-info text-dark">Ver productos</button>
+                <button onclick="limpiarBusqueda()" class="btn btn-outline-light">Limpiar búsqueda</button>
+
+                {% if session.get("user_id") %}
+                    {% if session.get("role") == "admin" %}
+                        <button onclick="location.href='/admin/dashboard'" class="btn btn-warning">Panel admin</button>
+                    {% endif %}
+
+                    <button onclick="location.href='/seller/dashboard'" class="btn btn-success">Mi panel</button>
+                {% else %}
+                    <button onclick="abrirVender()" class="btn btn-success">Vender</button>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="productosSection">
+            <h2 class="section-title">Publicaciones</h2>
+            <p class="section-subtitle">Productos activos ordenados por precio.</p>
+            <div id="contenedor" class="row"></div>
+        </div>
+
+        <div class="footer-space"></div>
+    </div>
+
+    <div class="modal fade" id="venderModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content custom-modal-content">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Ingresar para vender</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">Para publicar productos primero tenés que iniciar sesión o registrarte.</p>
+
+                    <div class="d-grid gap-2">
+                        <a href="/login" class="btn btn-info text-dark fw-bold">Iniciar sesión</a>
+                        <a href="/register" class="btn btn-outline-light">Registrarme</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="detalleModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content custom-modal-content" id="detalleContenido"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let productosBase = [];
+        let ciudadesBase = [];
+
+        function escaparHtml(texto) {
+            if (texto === null || texto === undefined) return "";
+            return String(texto)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function ordenarPorPrecio(lista) {
+            return [...lista].sort((a, b) => Number(a.precio) - Number(b.precio));
+        }
+
+        function normalizarTexto(texto) {
+            return (texto || "")
+                .toString()
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "");
+        }
+
+        async function cargarProductos() {
+            const res = await fetch("/api/products");
+            const data = await res.json();
+            productosBase = ordenarPorPrecio(data);
+            dibujar(productosBase);
+            cargarOpcionesFiltroCiudad(productosBase);
+        }
+
+        async function cargarCiudades() {
+            const res = await fetch("/api/cities");
+            const data = await res.json();
+            ciudadesBase = data || [];
+            dibujarCiudades(ciudadesBase);
+        }
+
+        function cargarOpcionesFiltroCiudad(productos) {
+            const select = document.getElementById("filtroCiudad");
+            const ciudadesUnicas = [...new Set(
+                productos
+                    .map(p => (p.ciudad || "").trim())
+                    .filter(c => c !== "")
+            )].sort((a, b) => a.localeCompare(b, 'es'));
+
+            select.innerHTML = `<option value="">Todas las ciudades</option>`;
+
+            ciudadesUnicas.forEach(ciudad => {
+                select.innerHTML += `<option value="${escaparHtml(ciudad)}">${escaparHtml(ciudad)}</option>`;
+            });
+        }
+
+        function dibujarCiudades(ciudades) {
+            const contenedor = document.getElementById("menuCiudades");
+            contenedor.innerHTML = "";
+
+            if (!ciudades.length) {
+                contenedor.innerHTML = `<div class="list-group-item text-secondary">Sin ciudades</div>`;
+                return;
+            }
+
+            ciudades.forEach(ciudad => {
+                contenedor.innerHTML += `
+                    <div class="list-group-item" onclick="filtrarPorCiudad('${escaparHtml(ciudad)}')">
+                        ${escaparHtml(ciudad)}
+                    </div>
+                `;
+            });
+        }
+
+        function dibujar(lista) {
+            const contenedor = document.getElementById("contenedor");
+            contenedor.innerHTML = "";
+
+            if (!lista.length) {
+                contenedor.innerHTML = `
+                    <div class="col-12">
+                        <div class="empty-box">
+                            <h4 class="mb-2">No hay publicaciones</h4>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            lista.forEach(producto => {
+                const imagen = producto.imagen && producto.imagen.trim() !== ""
+                    ? producto.imagen
+                    : "https://via.placeholder.com/900x600?text=Sin+imagen";
+
+                const whatsapp = producto.whatsapp_link
+                    ? `<a href="${escaparHtml(producto.whatsapp_link)}" target="_blank" class="btn-social btn-whatsapp" onclick="event.stopPropagation()"><i class="bi bi-whatsapp"></i> WhatsApp</a>`
+                    : "";
+
+                const instagram = producto.instagram_link
+                    ? `<a href="${escaparHtml(producto.instagram_link)}" target="_blank" class="btn-social btn-instagram" onclick="event.stopPropagation()"><i class="bi bi-instagram"></i> Instagram</a>`
+                    : "";
+
+                const facebook = producto.facebook_link
+                    ? `<a href="${escaparHtml(producto.facebook_link)}" target="_blank" class="btn-social btn-facebook" onclick="event.stopPropagation()"><i class="bi bi-facebook"></i> Facebook</a>`
+                    : "";
+
+                contenedor.innerHTML += `
+                    <div class="col-12 col-md-6 col-lg-4 mb-4">
+                        <div class="card card-oferta h-100">
+                            <div class="img-container" onclick='verDetalle(${JSON.stringify(producto)})'>
+                                <img src="${escaparHtml(imagen)}" alt="${escaparHtml(producto.titulo)}">
+                            </div>
+
+                            <div class="card-body d-flex flex-column">
+                                <div class="d-flex gap-2 flex-wrap mb-2">
+                                    <span class="tag-store">${escaparHtml(producto.tienda_nombre)}</span>
+                                    <span class="tag-city">${escaparHtml(producto.ciudad)}</span>
+                                </div>
+
+                                <h5 class="fw-bold">${escaparHtml(producto.titulo)}</h5>
+                                <p class="price mb-2">$${Number(producto.precio).toLocaleString('es-AR')}</p>
+                                <p class="text-secondary small mb-3">${escaparHtml(producto.descripcion || "")}</p>
+
+                                <div class="social-buttons mt-auto">
+                                    ${whatsapp}
+                                    ${instagram}
+                                    ${facebook}
+                                </div>
+
+                                <button class="btn btn-outline-info btn-sm mt-3 rounded-pill" onclick='verDetalle(${JSON.stringify(producto)})'>
+                                    Ver detalle
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function aplicarFiltros() {
+            const texto = normalizarTexto(document.getElementById("buscador").value.trim());
+            const ciudadSeleccionada = normalizarTexto(document.getElementById("filtroCiudad").value);
+
+            let filtrados = productosBase.filter(item => {
+                const titulo = normalizarTexto(item.titulo);
+                const tienda = normalizarTexto(item.tienda_nombre);
+                const ciudad = normalizarTexto(item.ciudad);
+
+                const coincideTexto =
+                    !texto ||
+                    titulo.includes(texto) ||
+                    tienda.includes(texto) ||
+                    ciudad.includes(texto);
+
+                const coincideCiudad =
+                    !ciudadSeleccionada ||
+                    ciudad === ciudadSeleccionada;
+
+                return coincideTexto && coincideCiudad;
+            });
+
+            dibujar(ordenarPorPrecio(filtrados));
+        }
+
+        function filtrarPorCiudad(ciudad) {
+            document.getElementById("filtroCiudad").value = ciudad;
+            aplicarFiltros();
+            scrollAProductos();
+        }
+
+        function limpiarBusqueda() {
+            document.getElementById("buscador").value = "";
+            document.getElementById("filtroCiudad").value = "";
+            dibujar(ordenarPorPrecio(productosBase));
+        }
+
+        function scrollAProductos() {
+            document.getElementById("productosSection").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function abrirVender() {
+            const modal = new bootstrap.Modal(document.getElementById("venderModal"));
+            modal.show();
+        }
+
+        function verDetalle(producto) {
+            const imagen = producto.imagen && producto.imagen.trim() !== ""
+                ? producto.imagen
+                : "https://via.placeholder.com/900x600?text=Sin+imagen";
+
+            const whatsapp = producto.whatsapp_link
+                ? `<a href="${escaparHtml(producto.whatsapp_link)}" target="_blank" class="btn-social btn-whatsapp"><i class="bi bi-whatsapp"></i> WhatsApp</a>`
+                : "";
+
+            const instagram = producto.instagram_link
+                ? `<a href="${escaparHtml(producto.instagram_link)}" target="_blank" class="btn-social btn-instagram"><i class="bi bi-instagram"></i> Instagram</a>`
+                : "";
+
+            const facebook = producto.facebook_link
+                ? `<a href="${escaparHtml(producto.facebook_link)}" target="_blank" class="btn-social btn-facebook"><i class="bi bi-facebook"></i> Facebook</a>`
+                : "";
+
+            document.getElementById("detalleContenido").innerHTML = `
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">${escaparHtml(producto.titulo)}</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <img src="${escaparHtml(imagen)}" class="img-fluid rounded-4 mb-3" alt="${escaparHtml(producto.titulo)}" style="object-fit: contain; background: white;">
+                    <p class="mb-2"><strong>Tienda:</strong> ${escaparHtml(producto.tienda_nombre)}</p>
+                    <p class="mb-2"><strong>Ciudad:</strong> ${escaparHtml(producto.ciudad)}</p>
+                    <p class="mb-2"><strong>Precio:</strong> $${Number(producto.precio).toLocaleString('es-AR')}</p>
+                    <p class="mb-3"><strong>Descripción:</strong> ${escaparHtml(producto.descripcion || "")}</p>
+                    <div class="social-buttons">
+                        ${whatsapp}
+                        ${instagram}
+                        ${facebook}
+                    </div>
+                </div>
+            `;
+
+            const modal = new bootstrap.Modal(document.getElementById("detalleModal"));
+            modal.show();
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const buscador = document.getElementById("buscador");
+
+            buscador.addEventListener("input", aplicarFiltros);
+
+            buscador.addEventListener("keypress", function(e) {
+                if (e.key === "Enter") {
+                    aplicarFiltros();
+                }
+            });
+
+            document.getElementById("filtroCiudad").addEventListener("change", aplicarFiltros);
+
+            cargarProductos();
+            cargarCiudades();
+        });
+    </script>
+</body>
+</html>

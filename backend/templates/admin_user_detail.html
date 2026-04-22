@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalle vendedor | OFERTAS SANTIAGO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        .box {
+            background: #101b2f;
+            border-radius: 22px;
+            padding: 25px;
+            border: 1px solid rgba(29,211,255,0.18);
+        }
+        .title {
+            color: #1dd3ff;
+            font-weight: 900;
+        }
+        .preview-image {
+            max-width: 120px;
+            max-height: 90px;
+            object-fit: cover;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .estado-vendido {
+            color: #ffc107;
+            font-weight: 700;
+        }
+        .estado-activo {
+            color: #00ff88;
+            font-weight: 700;
+        }
+        .estado-eliminado {
+            color: #ff6b6b;
+            font-weight: 700;
+        }
+        .estado-bloqueado {
+            color: #ff6b6b;
+            font-weight: 700;
+        }
+        .estado-habilitado {
+            color: #00ff88;
+            font-weight: 700;
+        }
+        .table {
+            color: white;
+        }
+        .table thead th {
+            color: #1dd3ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            <div>
+                <h2 class="title mb-1">Detalle del vendedor</h2>
+                <div>{{ usuario["email"] or "-" }}</div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="/admin/dashboard" class="btn btn-outline-light">Volver al admin</a>
+                <a href="/seller/dashboard" class="btn btn-info text-dark">Mi panel vendedor</a>
+                <a href="/logout" class="btn btn-danger">Cerrar sesión</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="box mb-4">
+            <h4 class="mb-3">Información del usuario</h4>
+            <div class="row">
+                <div class="col-md-3 mb-2"><strong>ID:</strong> {{ usuario["id"] }}</div>
+                <div class="col-md-3 mb-2"><strong>Email:</strong> {{ usuario["email"] or "-" }}</div>
+                <div class="col-md-3 mb-2"><strong>Teléfono:</strong> {{ usuario["telefono"] or "-" }}</div>
+                <div class="col-md-3 mb-2">
+                    <strong>Estado:</strong>
+                    {% if usuario["blocked"] == 1 %}
+                        <span class="estado-bloqueado">Bloqueado</span>
+                    {% else %}
+                        <span class="estado-habilitado">Activo</span>
+                    {% endif %}
+                </div>
+                <div class="col-md-4 mb-2"><strong>Tienda:</strong> {{ usuario["tienda_nombre"] or "-" }}</div>
+                <div class="col-md-4 mb-2"><strong>Ciudad:</strong> {{ usuario["ciudad"] or "-" }}</div>
+                <div class="col-md-4 mb-2"><strong>Alta:</strong> {{ usuario["created_at"] }}</div>
+            </div>
+
+            <div class="mt-3">
+                {% if usuario["id"] == session["user_id"] %}
+                    <span class="text-secondary">Tu cuenta</span>
+                {% else %}
+                    {% if usuario["blocked"] == 1 %}
+                        <a href="/admin/user/{{ usuario['id'] }}/unblock?next=detail" class="btn btn-success">Desbloquear usuario</a>
+                    {% else %}
+                        <a href="/admin/user/{{ usuario['id'] }}/block?next=detail" class="btn btn-warning">Bloquear usuario</a>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="box">
+            <h4 class="mb-3">Publicaciones del vendedor</h4>
+
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Imagen</th>
+                            <th>Título</th>
+                            <th>Ciudad</th>
+                            <th>Precio</th>
+                            <th>Estado</th>
+                            <th style="min-width: 260px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in publicaciones %}
+                            <tr>
+                                <td>{{ item["id"] }}</td>
+                                <td>
+                                    {% if item["imagen"] %}
+                                        <img src="{{ item['imagen'] }}" class="preview-image" alt="producto">
+                                    {% else %}
+                                        <span class="text-secondary">Sin imagen</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ item["titulo"] }}</td>
+                                <td>{{ item["ciudad"] }}</td>
+                                <td>${{ "{:,.0f}".format(item["precio"]).replace(",", ".") }}</td>
+                                <td>
+                                    {% if item["active"] == 0 %}
+                                        <span class="estado-eliminado">Eliminado</span>
+                                    {% elif item["sold"] == 1 %}
+                                        <span class="estado-vendido">Vendido</span>
+                                    {% else %}
+                                        <span class="estado-activo">Activo</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        {% if item["active"] == 1 %}
+                                            <a href="/seller/product/{{ item['id'] }}/edit" class="btn btn-sm btn-outline-info">Editar</a>
+
+                                            {% if item["sold"] == 0 %}
+                                                <form method="POST" action="/seller/product/{{ item['id'] }}/sold" onsubmit="return confirm('¿Marcar este producto como vendido?')">
+                                                    <button type="submit" class="btn btn-sm btn-warning">Vendido</button>
+                                                </form>
+                                            {% endif %}
+
+                                            <form method="POST" action="/seller/product/{{ item['id'] }}/delete" onsubmit="return confirm('¿Eliminar este producto?')">
+                                                <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                                            </form>
+                                        {% else %}
+                                            <span class="text-secondary">Sin acciones</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7">Este vendedor todavía no publicó productos.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

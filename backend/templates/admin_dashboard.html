@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel administrador | OFERTAS SANTIAGO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        .box {
+            background: #101b2f;
+            border-radius: 22px;
+            padding: 25px;
+            border: 1px solid rgba(29,211,255,0.18);
+        }
+        .title {
+            color: #1dd3ff;
+            font-weight: 900;
+        }
+        .table {
+            color: white;
+        }
+        .table thead th {
+            color: #1dd3ff;
+        }
+        .estado-bloqueado {
+            color: #ff6b6b;
+            font-weight: 700;
+        }
+        .estado-activo {
+            color: #00ff88;
+            font-weight: 700;
+        }
+        .rol-admin {
+            color: #ffc107;
+            font-weight: 700;
+        }
+        .rol-seller {
+            color: #8ceeff;
+            font-weight: 700;
+        }
+        .fila-click {
+            cursor: pointer;
+        }
+        .fila-click:hover {
+            background: rgba(29, 211, 255, 0.08) !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            <div>
+                <h2 class="title mb-1">Panel administrador</h2>
+                <div>{{ session["email"] }}</div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="/" class="btn btn-outline-light">Inicio</a>
+                <a href="/seller/dashboard" class="btn btn-info text-dark">Mi panel vendedor</a>
+                <a href="/logout" class="btn btn-danger">Cerrar sesión</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="box">
+            <h4 class="mb-3">Usuarios registrados</h4>
+
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Email</th>
+                            <th>Teléfono</th>
+                            <th>Rol</th>
+                            <th>Estado</th>
+                            <th>Fecha alta</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in usuarios %}
+                            <tr class="fila-click" onclick="window.location='/admin/user/{{ user['id'] }}'">
+                                <td>{{ user["id"] }}</td>
+                                <td>{{ user["email"] or "-" }}</td>
+                                <td>{{ user["telefono"] or "-" }}</td>
+                                <td>
+                                    {% if user["role"] == "admin" %}
+                                        <span class="rol-admin">Administrador</span>
+                                    {% else %}
+                                        <span class="rol-seller">Vendedor</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if user["blocked"] == 1 %}
+                                        <span class="estado-bloqueado">Bloqueado</span>
+                                    {% else %}
+                                        <span class="estado-activo">Activo</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ user["created_at"] }}</td>
+                                <td onclick="event.stopPropagation()">
+                                    {% if user["id"] == session["user_id"] %}
+                                        <span class="text-secondary">Tu cuenta</span>
+                                    {% else %}
+                                        {% if user["blocked"] == 1 %}
+                                            <a href="/admin/user/{{ user['id'] }}/unblock" class="btn btn-sm btn-success">
+                                                Desbloquear
+                                            </a>
+                                        {% else %}
+                                            <a href="/admin/user/{{ user['id'] }}/block" class="btn btn-sm btn-warning">
+                                                Bloquear
+                                            </a>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7">No hay usuarios registrados.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

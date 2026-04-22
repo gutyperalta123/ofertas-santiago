@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar producto | OFERTAS SANTIAGO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        .box {
+            max-width: 900px;
+            margin: 40px auto;
+            background: #101b2f;
+            border-radius: 22px;
+            padding: 30px;
+            border: 1px solid rgba(29,211,255,0.18);
+        }
+        .title {
+            color: #1dd3ff;
+            font-weight: 900;
+        }
+        .form-control, textarea.form-control {
+            background: #0a1322;
+            color: white;
+            border: 1px solid #294160;
+        }
+        .form-control:focus, textarea.form-control:focus {
+            background: #0a1322;
+            color: white;
+            border-color: #1dd3ff;
+            box-shadow: none;
+        }
+        .preview-image {
+            max-width: 180px;
+            max-height: 140px;
+            object-fit: cover;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .help-text {
+            color: #9fb1c8;
+            font-size: 0.92rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="box">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="title mb-0">Editar producto</h2>
+                <a href="/seller/dashboard" class="btn btn-outline-light">Volver</a>
+            </div>
+
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="imagen_actual" value="{{ producto['imagen'] or '' }}">
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Nombre de la tienda o empresa</label>
+                        <input type="text" name="tienda_nombre" class="form-control" value="{{ producto['tienda_nombre'] or '' }}" required>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Título</label>
+                        <input type="text" name="titulo" class="form-control" value="{{ producto['titulo'] }}" required>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Precio</label>
+                        <input type="text" name="precio" id="precio" class="form-control" value="{{ '{:,.0f}'.format(producto['precio']).replace(',', '.') if producto['precio'] else '' }}" inputmode="numeric" required>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Ciudad</label>
+                        <input type="text" name="ciudad" class="form-control" value="{{ producto['ciudad'] }}" required>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="descripcion" class="form-control" rows="3">{{ producto["descripcion"] or "" }}</textarea>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Cambiar foto del producto</label>
+                        <input type="file" name="imagen" class="form-control" accept="image/png,image/jpeg,image/jpg,image/webp">
+                        <div class="help-text mt-2">
+                            Podés elegir una foto desde la galería, archivos del teléfono o desde la computadora.
+                        </div>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        {% if producto["imagen"] %}
+                            <img src="{{ producto['imagen'] }}" class="preview-image" alt="producto actual">
+                        {% else %}
+                            <span class="text-secondary">Sin imagen cargada</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">WhatsApp</label>
+                        <input type="text" name="whatsapp_link" class="form-control" value="{{ producto['whatsapp_numero'] or '' }}" placeholder="Solo tu número">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Instagram link</label>
+                        <input type="text" name="instagram_link" class="form-control" value="{{ producto['instagram_link'] or '' }}">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Facebook link</label>
+                        <input type="text" name="facebook_link" class="form-control" value="{{ producto['facebook_link'] or '' }}">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-info text-dark fw-bold">Guardar cambios</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function formatearMiles(valor) {
+            const soloNumeros = valor.replace(/\D/g, "");
+            if (!soloNumeros) return "";
+            return soloNumeros.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        }
+
+        const precioInput = document.getElementById("precio");
+
+        precioInput.addEventListener("input", function () {
+            this.value = formatearMiles(this.value);
+        });
+    </script>
+</body>
+</html>

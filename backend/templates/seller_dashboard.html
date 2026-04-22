@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel vendedor | OFERTAS SANTIAGO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        .box {
+            background: #101b2f;
+            border-radius: 22px;
+            padding: 25px;
+            border: 1px solid rgba(29,211,255,0.18);
+        }
+        .title {
+            color: #1dd3ff;
+            font-weight: 900;
+        }
+        .form-control, textarea.form-control {
+            background: #0a1322;
+            color: white;
+            border: 1px solid #294160;
+        }
+        .form-control:focus, textarea.form-control:focus {
+            background: #0a1322;
+            color: white;
+            border-color: #1dd3ff;
+            box-shadow: none;
+        }
+        .table {
+            color: white;
+        }
+        .table thead th {
+            color: #1dd3ff;
+        }
+        .estado-vendido {
+            color: #ffc107;
+            font-weight: 700;
+        }
+        .estado-activo {
+            color: #00ff88;
+            font-weight: 700;
+        }
+        .estado-eliminado {
+            color: #ff6b6b;
+            font-weight: 700;
+        }
+        .preview-image {
+            max-width: 120px;
+            max-height: 90px;
+            object-fit: cover;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .help-text {
+            color: #9fb1c8;
+            font-size: 0.92rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            <div>
+                <h2 class="title mb-1">Panel del vendedor</h2>
+                <div>{{ session["email"] or session["telefono"] }}</div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="/" class="btn btn-outline-light">Inicio</a>
+
+                {% if session["role"] == "admin" %}
+                    <a href="/admin/dashboard" class="btn btn-warning">Panel admin</a>
+                {% endif %}
+
+                <a href="/logout" class="btn btn-danger">Cerrar sesión</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="box mb-4">
+            <h4 class="mb-3">Publicar producto</h4>
+
+            <form method="POST" enctype="multipart/form-data">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Nombre de la tienda o empresa</label>
+                        <input type="text" name="tienda_nombre" class="form-control" value="{{ user['tienda_nombre'] or '' }}" required>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Título del producto</label>
+                        <input type="text" name="titulo" class="form-control" required>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Precio</label>
+                        <input type="text" name="precio" id="precio" class="form-control" inputmode="numeric" required>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Ciudad o localidad</label>
+                        <input type="text" name="ciudad" class="form-control" value="{{ user['ciudad'] or '' }}" required>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="descripcion" class="form-control" rows="3"></textarea>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Foto del producto</label>
+                        <input type="file" name="imagen" class="form-control" accept="image/png,image/jpeg,image/jpg,image/webp">
+                        <div class="help-text mt-2">
+                            Podés elegir una foto desde la galería, archivos del teléfono o desde la computadora.
+                        </div>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">WhatsApp</label>
+                        <input type="text" name="whatsapp_link" class="form-control" placeholder="Solo tu número">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Instagram link</label>
+                        <input type="text" name="instagram_link" class="form-control" placeholder="https://instagram.com/...">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Facebook link</label>
+                        <input type="text" name="facebook_link" class="form-control" placeholder="https://facebook.com/...">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-info text-dark fw-bold">Publicar producto</button>
+            </form>
+        </div>
+
+        <div class="box">
+            <h4 class="mb-3">Mis publicaciones</h4>
+
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Imagen</th>
+                            <th>Título</th>
+                            <th>Ciudad</th>
+                            <th>Precio</th>
+                            <th>Estado</th>
+                            <th style="min-width: 260px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in publicaciones %}
+                            <tr>
+                                <td>{{ item["id"] }}</td>
+                                <td>
+                                    {% if item["imagen"] %}
+                                        <img src="{{ item['imagen'] }}" class="preview-image" alt="producto">
+                                    {% else %}
+                                        <span class="text-secondary">Sin imagen</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ item["titulo"] }}</td>
+                                <td>{{ item["ciudad"] }}</td>
+                                <td>${{ "{:,.0f}".format(item["precio"]).replace(",", ".") }}</td>
+                                <td>
+                                    {% if item["active"] == 0 %}
+                                        <span class="estado-eliminado">Eliminado</span>
+                                    {% elif item["sold"] == 1 %}
+                                        <span class="estado-vendido">Vendido</span>
+                                    {% else %}
+                                        <span class="estado-activo">Activo</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        {% if item["active"] == 1 %}
+                                            <a href="/seller/product/{{ item['id'] }}/edit" class="btn btn-sm btn-outline-info">Editar</a>
+
+                                            {% if item["sold"] == 0 %}
+                                                <form method="POST" action="/seller/product/{{ item['id'] }}/sold" onsubmit="return confirm('¿Marcar este producto como vendido?')">
+                                                    <button type="submit" class="btn btn-sm btn-warning">Vendido</button>
+                                                </form>
+                                            {% endif %}
+
+                                            <form method="POST" action="/seller/product/{{ item['id'] }}/delete" onsubmit="return confirm('¿Eliminar este producto?')">
+                                                <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                                            </form>
+                                        {% else %}
+                                            <span class="text-secondary">Sin acciones</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7">Todavía no publicaste productos.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function formatearMiles(valor) {
+            const soloNumeros = valor.replace(/\D/g, "");
+            if (!soloNumeros) return "";
+            return soloNumeros.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        }
+
+        const precioInput = document.getElementById("precio");
+
+        precioInput.addEventListener("input", function () {
+            this.value = formatearMiles(this.value);
+        });
+    </script>
+</body>
+</html>
