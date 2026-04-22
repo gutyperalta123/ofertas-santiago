@@ -45,6 +45,12 @@
             color: #9fb1c8;
             font-size: 0.92rem;
         }
+        .warning-box {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.35);
+            border-radius: 14px;
+            padding: 14px;
+        }
     </style>
 </head>
 <body>
@@ -121,7 +127,10 @@
                         {% if extracted.get('imagen') %}
                             <img src="{{ extracted.get('imagen') }}" class="preview-image" alt="imagen detectada">
                         {% else %}
-                            <div class="alert alert-warning mb-0">No se pudo detectar imagen automáticamente.</div>
+                            <div class="warning-box">
+                                <strong>No se pudo detectar imagen automáticamente.</strong><br>
+                                Más abajo podés pegar manualmente una URL de imagen antes de publicar.
+                            </div>
                         {% endif %}
                     </div>
 
@@ -132,8 +141,8 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Imagen detectada (URL)</label>
-                            <input type="text" name="imagen" class="form-control" value="{{ extracted.get('imagen', '') }}">
+                            <label class="form-label">Imagen detectada o manual (URL)</label>
+                            <input type="text" name="imagen" class="form-control" value="{{ extracted.get('imagen', '') }}" placeholder="Pegá manualmente una imagen si no se detectó">
                         </div>
 
                         <div class="mb-3">
@@ -171,12 +180,12 @@
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Instagram link</label>
-                        <input type="text" name="instagram_link" class="form-control" placeholder="https://instagram.com/...">
+                        <input type="text" name="instagram_link" class="form-control" placeholder="Si lo dejás vacío y el origen es Instagram, se usa el link original">
                     </div>
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Facebook link</label>
-                        <input type="text" name="facebook_link" class="form-control" placeholder="https://facebook.com/...">
+                        <input type="text" name="facebook_link" class="form-control" placeholder="Si lo dejás vacío y el origen es Facebook, se usa el link original">
                     </div>
                 </div>
 

@@ -245,9 +245,21 @@ def admin_import_post():
                     extracted = request.form.to_dict()
                     return render_template("admin_import_post.html", extracted=extracted)
 
+            # =================================================
+            # NO mostramos el link crudo en la descripción
+            # =================================================
             descripcion_final = descripcion.strip()
+
+            # =================================================
+            # Si no completaste redes, usamos el link original
+            # como botón según el tipo de origen
+            # =================================================
             if source_url:
-                descripcion_final += f"\n\nOrigen: {source_url}"
+                if source_type == "instagram" and not instagram_link:
+                    instagram_link = source_url
+
+                elif source_type == "facebook" and not facebook_link:
+                    facebook_link = source_url
 
             conn = get_db()
             c = conn.cursor()
