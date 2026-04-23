@@ -5,6 +5,7 @@
 # - analyze_web_catalog: para páginas web / catálogos
 # =========================================================
 
+import json
 import re
 import requests
 from bs4 import BeautifulSoup
@@ -31,8 +32,18 @@ def get_meta(soup, attr_name, attr_value):
 def clean_text(text):
     if not text:
         return ""
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", str(text)).strip()
     return text
+
+
+def normalize_price_to_text(value):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    if not value:
+        return ""
+    value = value.replace(",", ".")
+    return value
 
 
 def detect_price(text):
@@ -42,6 +53,7 @@ def detect_price(text):
     patterns = [
         r"(?:\$|ARS|ars)\s*([0-9]{1,3}(?:[.\,][0-9]{3})+(?:[\,][0-9]{1,2})?)",
         r"(?:\$|ARS|ars)\s*([0-9]+(?:[\,][0-9]{1,2})?)",
+        r"\b([0-9]{1,3}(?:[.\,][0-9]{3})+)\b",
     ]
 
     for pattern in patterns:
@@ -54,14 +66,14 @@ def detect_price(text):
     return ""
 
 
-def absolute_image_url(image_url, final_url):
+def absolute_image_url(image_url, base_url):
     if not image_url:
         return ""
     if image_url.startswith("http://") or image_url.startswith("https://"):
         return image_url
     if image_url.startswith("//"):
         return "https:" + image_url
-    return urljoin(final_url, image_url)
+    return urljoin(base_url, image_url)
 
 
 def normalize_link(link, base_url):
@@ -113,7 +125,6 @@ def analyze_publication_link(url, source_type):
     full_text = " ".join([clean_text(x) for x in full_text_candidates if x])
 
     price = detect_price(full_text)
-
     tienda = site_name
 
     if not tienda:
@@ -149,7 +160,6 @@ def extract_site_social_links(soup, base_url):
     for a in links:
         href = a.get("href", "").strip()
         href_full = normalize_link(href, base_url)
-
         href_lower = href_full.lower()
 
         if not instagram and "instagram.com" in href_lower:
@@ -158,7 +168,11 @@ def extract_site_social_links(soup, base_url):
         if not facebook and "facebook.com" in href_lower:
             facebook = href_full
 
-        if not whatsapp and ("wa.me/" in href_lower or "whatsapp.com" in href_lower or "api.whatsapp.com" in href_lower):
+        if not whatsapp and (
+            "wa.me/" in href_lower
+            or "whatsapp.com" in href_lower
+            or "api.whatsapp.com" in href_lower
+        ):
             whatsapp = href_full
 
     return {
@@ -168,101 +182,185 @@ def extract_site_social_links(soup, base_url):
     }
 
 
-def looks_like_product_card(text, link, image):
-    text = clean_text(text)
-    if len(text) < 8:
-        return False
-    if not link:
-        return False
-    if not image:
-        return False
-    return True
+def jsonld_to_products(data, base_url):
+    products = []
+
+    def walk(node):
+        if isinstance(node, list):
+            for item in node:
+                walk(item)
+            return
+
+        if not isinstance(node, dict):
+            return
+
+        node_type = node.get("@type", "")
+        if isinstance(node_type, list):
+            node_type = " ".join(node_type)
+
+        node_type = str(node_type).lower()
+
+        # Product directo
+        if "product" in node_type:
+            name = clean_text(node.get("name"))
+            description = clean_text(node.get("description"))
+            image = node.get("image", "")
+            if isinstance(image, list):
+                image = image[0] if image else ""
+            image = absolute_image_url(str(image), base_url)
+
+            offers = node.get("offers", {})
+            price = ""
+
+            if isinstance(offers, list) and offers:
+                offer = offers[0]
+                if isinstance(offer, dict):
+                    price = normalize_price_to_text(offer.get("price", ""))
+            elif isinstance(offers, dict):
+                price = normalize_price_to_text(offers.get("price", ""))
+
+            source_url = normalize_link(node.get("url", ""), base_url)
+
+            if name:
+                products.append({
+                    "titulo": name,
+                    "descripcion": description,
+                    "precio": price,
+                    "imagen": image,
+                    "source_url": source_url,
+                })
+
+        # ItemList
+        if "itemlist" in node_type:
+            items = node.get("itemListElement", [])
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        walk(item.get("item", item))
+
+        # recorrida general
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                walk(value)
+
+    walk(data)
+    return products
 
 
-def extract_candidate_cards(soup, base_url):
-    candidates = []
+def extract_jsonld_products(soup, base_url):
+    products = []
 
-    selectors = [
-        ["article"],
-        ["div", "li", "section"],
-    ]
+    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        raw = script.string or script.get_text(strip=True)
+        if not raw:
+            continue
 
+        try:
+            data = json.loads(raw)
+            products.extend(jsonld_to_products(data, base_url))
+        except Exception:
+            # a veces el JSON-LD viene raro; seguimos
+            continue
+
+    return products
+
+
+def extract_dom_products(soup, base_url):
+    products = []
     seen = set()
 
-    # intento 1: artículos
-    for tag_name in selectors[0]:
-        for tag in soup.find_all(tag_name):
-            text = clean_text(tag.get_text(" ", strip=True))
-            a = tag.find("a", href=True)
-            img = tag.find("img", src=True)
+    candidate_containers = []
 
-            link = normalize_link(a.get("href"), base_url) if a else ""
-            image = absolute_image_url(img.get("src"), base_url) if img else ""
-            price = detect_price(text)
+    for tag_name in ["article", "li", "div", "section"]:
+        candidate_containers.extend(soup.find_all(tag_name))
 
-            # buscar título
-            title = ""
-            for title_tag in tag.find_all(["h1", "h2", "h3", "h4", "strong", "span"]):
-                t = clean_text(title_tag.get_text(" ", strip=True))
-                if len(t) >= 5:
-                    title = t
-                    break
+    for tag in candidate_containers:
+        text = clean_text(tag.get_text(" ", strip=True))
+        if len(text) < 8:
+            continue
 
-            if not title:
-                title = text[:120]
+        a = tag.find("a", href=True)
+        img = tag.find("img")
 
-            if looks_like_product_card(title or text, link, image):
-                key = (title, price, image, link)
-                if key not in seen:
-                    seen.add(key)
-                    candidates.append({
-                        "titulo": clean_text(title),
-                        "descripcion": "",
-                        "precio": price,
-                        "imagen": image,
-                        "source_url": link,
-                    })
+        link = normalize_link(a.get("href"), base_url) if a else ""
+        image = ""
+        if img:
+            image = img.get("src") or img.get("data-src") or img.get("srcset") or ""
+            if image and " " in image and "http" in image:
+                image = image.split(" ")[0]
+            image = absolute_image_url(image, base_url)
 
-    # intento 2: div/li/section con clase sugerente
-    keywords = ["product", "item", "card", "post", "listing", "box"]
+        price = detect_price(text)
 
-    for tag_name in selectors[1]:
-        for tag in soup.find_all(tag_name):
-            classes = " ".join(tag.get("class", [])).lower()
-            if not any(k in classes for k in keywords):
-                continue
+        title = ""
+        for title_tag in tag.find_all(["h1", "h2", "h3", "h4", "strong", "span"]):
+            t = clean_text(title_tag.get_text(" ", strip=True))
+            if len(t) >= 5 and t.lower() not in ["comprar", "ver más", "agregar al carrito"]:
+                title = t
+                break
 
-            text = clean_text(tag.get_text(" ", strip=True))
-            a = tag.find("a", href=True)
-            img = tag.find("img", src=True)
+        if not title:
+            # tomamos primeras palabras útiles
+            title = text[:120]
 
-            link = normalize_link(a.get("href"), base_url) if a else ""
-            image = absolute_image_url(img.get("src"), base_url) if img else ""
-            price = detect_price(text)
+        # filtro mínimo
+        if not title or not image:
+            continue
 
-            title = ""
-            for title_tag in tag.find_all(["h1", "h2", "h3", "h4", "strong", "span"]):
-                t = clean_text(title_tag.get_text(" ", strip=True))
-                if len(t) >= 5:
-                    title = t
-                    break
+        # para catálogos reales conviene al menos link o precio
+        if not link and not price:
+            continue
 
-            if not title:
-                title = text[:120]
+        key = (title.lower(), price, image, link)
+        if key in seen:
+            continue
+        seen.add(key)
 
-            if looks_like_product_card(title or text, link, image):
-                key = (title, price, image, link)
-                if key not in seen:
-                    seen.add(key)
-                    candidates.append({
-                        "titulo": clean_text(title),
-                        "descripcion": "",
-                        "precio": price,
-                        "imagen": image,
-                        "source_url": link,
-                    })
+        products.append({
+            "titulo": clean_text(title),
+            "descripcion": "",
+            "precio": price,
+            "imagen": image,
+            "source_url": link,
+        })
 
-    return candidates
+    return products
+
+
+def merge_products(products):
+    merged = []
+    seen = set()
+
+    for p in products:
+        titulo = clean_text(p.get("titulo", ""))
+        precio = clean_text(p.get("precio", ""))
+        imagen = clean_text(p.get("imagen", ""))
+        link = clean_text(p.get("source_url", ""))
+
+        if len(titulo) < 4:
+            continue
+
+        key = (
+            titulo.lower(),
+            precio,
+            imagen,
+            link
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        merged.append({
+            "titulo": titulo,
+            "descripcion": clean_text(p.get("descripcion", "")),
+            "precio": precio,
+            "imagen": imagen,
+            "source_url": link,
+            "selected": True,
+        })
+
+    return merged
 
 
 def analyze_web_catalog(url):
@@ -280,30 +378,11 @@ def analyze_web_catalog(url):
     )
 
     socials = extract_site_social_links(soup, final_url)
-    products = extract_candidate_cards(soup, final_url)
 
-    # limpiamos títulos muy repetidos o feos
-    cleaned_products = []
-    seen_titles_links = set()
+    jsonld_products = extract_jsonld_products(soup, final_url)
+    dom_products = extract_dom_products(soup, final_url)
 
-    for p in products:
-        titulo = clean_text(p.get("titulo", ""))
-        if len(titulo) < 4:
-            continue
-
-        key = (titulo.lower(), p.get("source_url", ""))
-        if key in seen_titles_links:
-            continue
-        seen_titles_links.add(key)
-
-        cleaned_products.append({
-            "titulo": titulo,
-            "descripcion": p.get("descripcion", ""),
-            "precio": p.get("precio", ""),
-            "imagen": p.get("imagen", ""),
-            "source_url": p.get("source_url", ""),
-            "selected": True,
-        })
+    products = merge_products(jsonld_products + dom_products)
 
     return {
         "source_url": final_url,
@@ -311,5 +390,5 @@ def analyze_web_catalog(url):
         "instagram_link": socials["instagram_link"],
         "facebook_link": socials["facebook_link"],
         "whatsapp_link": socials["whatsapp_link"],
-        "products": cleaned_products[:100],  # límite razonable
+        "products": products[:150],
     }

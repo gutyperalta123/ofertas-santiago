@@ -235,7 +235,6 @@ def seller_dashboard():
     conn = get_db()
     c = conn.cursor()
 
-    # El admin acá ve sus publicaciones propias, igual que un vendedor
     publicaciones = c.execute("""
         SELECT *
         FROM products
@@ -351,7 +350,6 @@ def edit_product(product_id):
             product_id
         ))
 
-        # Solo si el producto es del propio admin/vendedor actual, actualizamos su perfil base
         if producto["user_id"] == session["user_id"]:
             c.execute("""
                 UPDATE users
@@ -366,7 +364,6 @@ def edit_product(product_id):
 
         flash("Producto editado correctamente.", "success")
 
-        # Si el admin vino desde el detalle de un vendedor, vuelve ahí
         if session["role"] == "admin" and producto["user_id"] != session["user_id"]:
             return redirect(url_for("admin.admin_user_detail", user_id=producto["user_id"]))
 
@@ -457,5 +454,80 @@ def mark_as_sold(product_id):
 
     if session["role"] == "admin" and producto["user_id"] != session["user_id"]:
         return redirect(url_for("admin.admin_user_detail", user_id=producto["user_id"]))
+
+    return redirect(url_for("products.seller_dashboard"))
+
+
+@product_routes.route("/seller/products/bulk-action", methods=["POST"])
+def bulk_action_products():
+    if not usuario_logueado():
+        return redirect(url_for("auth.login"))
+
+    product_ids = request.form.getlist("product_ids[]")
+    bulk_action = request.form.get("bulk_action", "").strip()
+    return_to = request.form.get("return_to", "").strip()
+    owner_user_id = request.form.get("owner_user_id", "").strip()
+
+    if not product_ids:
+        flash("Seleccioná al menos un producto.", "warning")
+        if return_to == "admin_detail" and owner_user_id:
+            return redirect(url_for("admin.admin_user_detail", user_id=owner_user_id))
+        return redirect(url_for("products.seller_dashboard"))
+
+    if bulk_action not in ["delete", "sold"]:
+        flash("Acción masiva no válida.", "danger")
+        if return_to == "admin_detail" and owner_user_id:
+            return redirect(url_for("admin.admin_user_detail", user_id=owner_user_id))
+        return redirect(url_for("products.seller_dashboard"))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    afectados = 0
+
+    for pid in product_ids:
+        try:
+            pid_int = int(pid)
+        except ValueError:
+            continue
+
+        producto = c.execute("""
+            SELECT *
+            FROM products
+            WHERE id = ?
+        """, (pid_int,)).fetchone()
+
+        if not producto:
+            continue
+
+        if not puede_tocar_producto(producto, session["user_id"], session["role"]):
+            continue
+
+        if bulk_action == "delete":
+            c.execute("""
+                UPDATE products
+                SET active = 0
+                WHERE id = ?
+            """, (pid_int,))
+            afectados += 1
+
+        elif bulk_action == "sold":
+            c.execute("""
+                UPDATE products
+                SET sold = 1
+                WHERE id = ?
+            """, (pid_int,))
+            afectados += 1
+
+    conn.commit()
+    conn.close()
+
+    if bulk_action == "delete":
+        flash(f"Se eliminaron {afectados} productos.", "success")
+    elif bulk_action == "sold":
+        flash(f"Se marcaron {afectados} productos como vendidos.", "success")
+
+    if return_to == "admin_detail" and owner_user_id:
+        return redirect(url_for("admin.admin_user_detail", user_id=owner_user_id))
 
     return redirect(url_for("products.seller_dashboard"))
