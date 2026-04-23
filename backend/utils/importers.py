@@ -83,32 +83,77 @@ def price_to_number_for_sort(price_text):
         return float("inf")
 
 
-def detect_price(text):
+def format_price_for_display(value):
+    try:
+        n = int(float(str(value).replace(".", "").replace(",", ".")))
+        return f"{n:,}".replace(",", ".")
+    except Exception:
+        return str(value).strip()
+
+
+def is_valid_price_number(n):
     """
-    Detecta precios comunes:
-    $ 259.999
-    ARS 120.000
-    1.250.000
+    Filtramos números chicos para evitar:
+    1, 2, 12, 65, 75, SKU parciales, cuotas, etc.
+    Ajustado para precios argentinos.
+    """
+    return n >= 1000
+
+
+def detect_price_candidates(text):
+    """
+    Busca todos los posibles precios en un texto.
     """
     if not text:
-        return ""
+        return []
 
     text = clean_text(text)
 
+    candidates = []
+
     patterns = [
-        r"\$\s*([0-9]{1,3}(?:[.\,][0-9]{3})+)",
-        r"\$\s*([0-9]+)",
-        r"(?:ARS|ars)\s*([0-9]{1,3}(?:[.\,][0-9]{3})+)",
+        # $ 1.322.313 o $1.322.313,00
+        r"(?:\$|ARS|ars)\s*([0-9]{1,3}(?:[.\,][0-9]{3})+(?:[\,][0-9]{1,2})?)",
+        # números grandes con separador de miles, aunque no tengan $
         r"\b([0-9]{1,3}(?:\.[0-9]{3})+)\b",
+        r"\b([0-9]{1,3}(?:,[0-9]{3})+)\b",
+        # número corrido largo
+        r"\b([0-9]{4,})\b",
     ]
 
     for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            value = match.group(1).strip()
-            return value.replace(",", ".")
+        for match in re.finditer(pattern, text):
+            raw_value = match.group(1).strip()
 
-    return ""
+            # mantenemos versión display
+            display_value = raw_value.replace(",", ".")
+
+            # para validar como número
+            numeric_str = raw_value.replace(".", "").replace(",", ".")
+            try:
+                numeric_value = float(numeric_str)
+            except Exception:
+                continue
+
+            if is_valid_price_number(numeric_value):
+                candidates.append((numeric_value, format_price_for_display(numeric_value)))
+
+    return candidates
+
+
+def detect_price(text):
+    """
+    Devuelve el mejor precio detectado.
+    Regla: si hay varios, usamos el mayor dentro del bloque analizado,
+    porque en ecommerce suelen aparecer cuotas pequeñas, descuentos o números menores mezclados.
+    """
+    candidates = detect_price_candidates(text)
+    if not candidates:
+        return ""
+
+    # usamos el valor numérico más alto del bloque
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0][1]
 
 
 def is_bad_title(title):
@@ -166,7 +211,6 @@ def dedupe_products(products):
         if is_bad_title(titulo):
             continue
 
-        # descartamos productos sin precio real
         if not precio or precio in ["0", "0.0", "0.00"]:
             continue
 
@@ -331,7 +375,9 @@ def _walk_jsonld(node, base_url, found_products):
         elif isinstance(offers, dict):
             price = normalize_price_text(offers.get("price", ""))
 
-        if name and not is_bad_title(name):
+        price = detect_price(price)
+
+        if name and not is_bad_title(name) and price:
             found_products.append({
                 "titulo": name,
                 "descripcion": shorten_text(description, 220),
@@ -424,7 +470,7 @@ def deep_extract_products_from_data(data, base_url, found_products):
         possible_image = possible_image[0] if possible_image else ""
 
     title = clean_text(possible_title)
-    price = normalize_price_text(possible_price)
+    price = detect_price(normalize_price_text(possible_price))
     image = absolute_image_url(str(possible_image), base_url) if possible_image else ""
     source_url = normalize_link(str(possible_url), base_url) if possible_url else ""
     description = shorten_text(
@@ -521,6 +567,7 @@ def extract_dom_products(soup, base_url):
             t = clean_text(title_tag.get_text(" ", strip=True))
             if is_bad_title(t):
                 continue
+            # si el "titulo" parece puro precio, lo descartamos
             if detect_price(t) and len(t) < 25:
                 continue
             if len(t) >= 5:
