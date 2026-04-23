@@ -1,19 +1,14 @@
 # =========================================================
-# IMPORTADOR SEMI-AUTOMÁTICO DE PUBLICACIONES
+# IMPORTADORES SEMI-AUTOMÁTICOS
 # =========================================================
-# Analiza un link público y trata de extraer:
-# - imagen
-# - título
-# - descripción
-# - tienda/usuario
-# - precio
-#
-# Funciona mejor cuando la página trae metadatos Open Graph.
+# - analyze_publication_link: para publicaciones puntuales
+# - analyze_web_catalog: para páginas web / catálogos
 # =========================================================
 
 import re
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 
 HEADERS = {
@@ -41,12 +36,6 @@ def clean_text(text):
 
 
 def detect_price(text):
-    """
-    Intenta detectar precios como:
-    $ 1.250.000
-    1250000
-    ARS 450.000
-    """
     if not text:
         return ""
 
@@ -72,20 +61,16 @@ def absolute_image_url(image_url, final_url):
         return image_url
     if image_url.startswith("//"):
         return "https:" + image_url
+    return urljoin(final_url, image_url)
 
-    # muy básico
-    if final_url.endswith("/") and image_url.startswith("/"):
-        return final_url[:-1] + image_url
-    elif not final_url.endswith("/") and not image_url.startswith("/"):
-        return final_url + "/" + image_url
-    else:
-        return final_url + image_url
+
+def normalize_link(link, base_url):
+    if not link:
+        return ""
+    return urljoin(base_url, link)
 
 
 def analyze_publication_link(url, source_type):
-    """
-    Devuelve un diccionario con datos detectados.
-    """
     response = requests.get(url, headers=HEADERS, timeout=20, allow_redirects=True)
     response.raise_for_status()
 
@@ -104,7 +89,6 @@ def analyze_publication_link(url, source_type):
     twitter_image = get_meta(soup, "name", "twitter:image")
 
     page_title = clean_text(soup.title.string if soup.title and soup.title.string else "")
-
     description_tag = get_meta(soup, "name", "description")
 
     title = og_title or twitter_title or page_title
@@ -112,7 +96,6 @@ def analyze_publication_link(url, source_type):
     image = og_image or twitter_image
     site_name = og_site_name
 
-    # si no encontró imagen en meta, intenta primera img útil
     if not image:
         first_img = soup.find("img")
         if first_img and first_img.get("src"):
@@ -120,7 +103,6 @@ def analyze_publication_link(url, source_type):
 
     image = absolute_image_url(image, final_url)
 
-    # armamos texto grande para detectar precio
     full_text_candidates = [
         title,
         description,
@@ -132,15 +114,13 @@ def analyze_publication_link(url, source_type):
 
     price = detect_price(full_text)
 
-    # tienda o usuario
     tienda = site_name
 
     if not tienda:
-        # si es instagram / facebook intentamos algo simple
         if "instagram.com" in final_url:
             parts = [p for p in final_url.split("/") if p and "instagram.com" not in p and "www." not in p]
-            if len(parts) >= 1:
-                tienda = parts[1] if len(parts) > 1 else parts[0]
+            if parts:
+                tienda = parts[0]
         elif "facebook.com" in final_url:
             parts = [p for p in final_url.split("/") if p and "facebook.com" not in p and "www." not in p]
             if parts:
@@ -156,4 +136,180 @@ def analyze_publication_link(url, source_type):
         "imagen": image,
         "tienda_nombre": tienda,
         "precio": price,
+    }
+
+
+def extract_site_social_links(soup, base_url):
+    instagram = ""
+    facebook = ""
+    whatsapp = ""
+
+    links = soup.find_all("a", href=True)
+
+    for a in links:
+        href = a.get("href", "").strip()
+        href_full = normalize_link(href, base_url)
+
+        href_lower = href_full.lower()
+
+        if not instagram and "instagram.com" in href_lower:
+            instagram = href_full
+
+        if not facebook and "facebook.com" in href_lower:
+            facebook = href_full
+
+        if not whatsapp and ("wa.me/" in href_lower or "whatsapp.com" in href_lower or "api.whatsapp.com" in href_lower):
+            whatsapp = href_full
+
+    return {
+        "instagram_link": instagram,
+        "facebook_link": facebook,
+        "whatsapp_link": whatsapp,
+    }
+
+
+def looks_like_product_card(text, link, image):
+    text = clean_text(text)
+    if len(text) < 8:
+        return False
+    if not link:
+        return False
+    if not image:
+        return False
+    return True
+
+
+def extract_candidate_cards(soup, base_url):
+    candidates = []
+
+    selectors = [
+        ["article"],
+        ["div", "li", "section"],
+    ]
+
+    seen = set()
+
+    # intento 1: artículos
+    for tag_name in selectors[0]:
+        for tag in soup.find_all(tag_name):
+            text = clean_text(tag.get_text(" ", strip=True))
+            a = tag.find("a", href=True)
+            img = tag.find("img", src=True)
+
+            link = normalize_link(a.get("href"), base_url) if a else ""
+            image = absolute_image_url(img.get("src"), base_url) if img else ""
+            price = detect_price(text)
+
+            # buscar título
+            title = ""
+            for title_tag in tag.find_all(["h1", "h2", "h3", "h4", "strong", "span"]):
+                t = clean_text(title_tag.get_text(" ", strip=True))
+                if len(t) >= 5:
+                    title = t
+                    break
+
+            if not title:
+                title = text[:120]
+
+            if looks_like_product_card(title or text, link, image):
+                key = (title, price, image, link)
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append({
+                        "titulo": clean_text(title),
+                        "descripcion": "",
+                        "precio": price,
+                        "imagen": image,
+                        "source_url": link,
+                    })
+
+    # intento 2: div/li/section con clase sugerente
+    keywords = ["product", "item", "card", "post", "listing", "box"]
+
+    for tag_name in selectors[1]:
+        for tag in soup.find_all(tag_name):
+            classes = " ".join(tag.get("class", [])).lower()
+            if not any(k in classes for k in keywords):
+                continue
+
+            text = clean_text(tag.get_text(" ", strip=True))
+            a = tag.find("a", href=True)
+            img = tag.find("img", src=True)
+
+            link = normalize_link(a.get("href"), base_url) if a else ""
+            image = absolute_image_url(img.get("src"), base_url) if img else ""
+            price = detect_price(text)
+
+            title = ""
+            for title_tag in tag.find_all(["h1", "h2", "h3", "h4", "strong", "span"]):
+                t = clean_text(title_tag.get_text(" ", strip=True))
+                if len(t) >= 5:
+                    title = t
+                    break
+
+            if not title:
+                title = text[:120]
+
+            if looks_like_product_card(title or text, link, image):
+                key = (title, price, image, link)
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append({
+                        "titulo": clean_text(title),
+                        "descripcion": "",
+                        "precio": price,
+                        "imagen": image,
+                        "source_url": link,
+                    })
+
+    return candidates
+
+
+def analyze_web_catalog(url):
+    response = requests.get(url, headers=HEADERS, timeout=25, allow_redirects=True)
+    response.raise_for_status()
+
+    html = response.text
+    final_url = response.url
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    site_name = (
+        get_meta(soup, "property", "og:site_name")
+        or clean_text(soup.title.string if soup.title and soup.title.string else "")
+    )
+
+    socials = extract_site_social_links(soup, final_url)
+    products = extract_candidate_cards(soup, final_url)
+
+    # limpiamos títulos muy repetidos o feos
+    cleaned_products = []
+    seen_titles_links = set()
+
+    for p in products:
+        titulo = clean_text(p.get("titulo", ""))
+        if len(titulo) < 4:
+            continue
+
+        key = (titulo.lower(), p.get("source_url", ""))
+        if key in seen_titles_links:
+            continue
+        seen_titles_links.add(key)
+
+        cleaned_products.append({
+            "titulo": titulo,
+            "descripcion": p.get("descripcion", ""),
+            "precio": p.get("precio", ""),
+            "imagen": p.get("imagen", ""),
+            "source_url": p.get("source_url", ""),
+            "selected": True,
+        })
+
+    return {
+        "source_url": final_url,
+        "tienda_nombre": site_name,
+        "instagram_link": socials["instagram_link"],
+        "facebook_link": socials["facebook_link"],
+        "whatsapp_link": socials["whatsapp_link"],
+        "products": cleaned_products[:100],  # límite razonable
     }

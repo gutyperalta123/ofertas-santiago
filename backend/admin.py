@@ -1,22 +1,13 @@
 # =========================================================
 # PANEL ADMINISTRADOR
 # =========================================================
-# Permite:
-# - ver usuarios registrados
-# - bloquear usuarios
-# - desbloquear usuarios
-# - ver detalle de un vendedor
-# - ver y gestionar productos de un vendedor
-# - importar publicaciones desde links
-# - subir imagen manual en importación admin
-# =========================================================
 
 import os
 import uuid
 from werkzeug.utils import secure_filename
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request, current_app
 from database import get_db
-from utils.importers import analyze_publication_link
+from utils.importers import analyze_publication_link, analyze_web_catalog
 
 admin_routes = Blueprint("admin", __name__)
 
@@ -278,7 +269,6 @@ def admin_import_post():
                 elif source_type == "facebook" and not facebook_link:
                     facebook_link = source_url
 
-            # Si sube una imagen propia, tiene prioridad sobre la detectada
             if imagen_file and imagen_file.filename:
                 imagen_subida = guardar_imagen_admin(imagen_file)
                 if imagen_subida is None:
@@ -328,3 +318,145 @@ def admin_import_post():
             return redirect(url_for("admin.admin_import_post"))
 
     return render_template("admin_import_post.html", extracted=extracted)
+
+
+@admin_routes.route("/admin/import-web", methods=["GET", "POST"])
+def admin_import_web():
+    if "user_id" not in session:
+        return redirect(url_for("auth.login"))
+
+    if not es_admin():
+        flash("No tenés permisos para esta sección.", "danger")
+        return redirect(url_for("products.seller_dashboard"))
+
+    extracted = None
+
+    if request.method == "POST":
+        action = request.form.get("action", "").strip()
+
+        # =====================================================
+        # ANALIZAR WEB
+        # =====================================================
+        if action == "analyze":
+            source_url = request.form.get("source_url", "").strip()
+
+            if not source_url:
+                flash("Pegá una URL de página web.", "danger")
+                return render_template("admin_import_web.html", extracted=None)
+
+            try:
+                extracted = analyze_web_catalog(source_url)
+                if not extracted.get("products"):
+                    flash("La web se analizó, pero no se pudieron detectar productos claros.", "warning")
+                else:
+                    flash(f"Se detectaron {len(extracted.get('products', []))} productos. Revisá y publicá.", "success")
+            except Exception as e:
+                flash(f"No se pudo analizar la web. Error: {str(e)}", "danger")
+                return render_template("admin_import_web.html", extracted=None)
+
+            return render_template("admin_import_web.html", extracted=extracted)
+
+        # =====================================================
+        # PUBLICAR TODOS LOS SELECCIONADOS
+        # =====================================================
+        if action == "publish_all":
+            source_url = request.form.get("source_url", "").strip()
+            tienda_nombre = request.form.get("tienda_nombre", "").strip()
+            ciudad = request.form.get("ciudad", "").strip()
+            whatsapp_link = request.form.get("whatsapp_link", "").strip()
+            instagram_link = request.form.get("instagram_link", "").strip()
+            facebook_link = request.form.get("facebook_link", "").strip()
+
+            if not tienda_nombre:
+                flash("El nombre de la tienda es obligatorio.", "danger")
+                extracted = request.form.to_dict(flat=False)
+                return render_template("admin_import_web.html", extracted=None)
+
+            if not ciudad:
+                flash("La ciudad es obligatoria.", "danger")
+                extracted = request.form.to_dict(flat=False)
+                return render_template("admin_import_web.html", extracted=None)
+
+            titulos = request.form.getlist("producto_titulo[]")
+            descripciones = request.form.getlist("producto_descripcion[]")
+            precios_raw = request.form.getlist("producto_precio[]")
+            imagenes = request.form.getlist("producto_imagen[]")
+            links = request.form.getlist("producto_link[]")
+            seleccionados = request.form.getlist("producto_selected[]")
+
+            if not titulos:
+                flash("No hay productos para publicar.", "danger")
+                return redirect(url_for("admin.admin_import_web"))
+
+            conn = get_db()
+            c = conn.cursor()
+
+            publicados = 0
+
+            for i in range(len(titulos)):
+                if str(i) not in seleccionados:
+                    continue
+
+                titulo = (titulos[i] or "").strip()
+                descripcion = (descripciones[i] or "").strip()
+                precio_raw = (precios_raw[i] or "").strip()
+                imagen = (imagenes[i] or "").strip()
+                link_origen = (links[i] or "").strip()
+
+                if not titulo:
+                    continue
+
+                precio = 0
+                if precio_raw:
+                    try:
+                        precio = float(precio_raw.replace(".", "").replace(",", "."))
+                    except ValueError:
+                        precio = 0
+
+                descripcion_final = descripcion
+                if link_origen:
+                    if descripcion_final:
+                        descripcion_final += f"\n\nProducto original: {link_origen}"
+                    else:
+                        descripcion_final = f"Producto original: {link_origen}"
+
+                c.execute("""
+                    INSERT INTO products (
+                        user_id,
+                        titulo,
+                        descripcion,
+                        precio,
+                        imagen,
+                        tienda_nombre,
+                        ciudad,
+                        whatsapp_link,
+                        instagram_link,
+                        facebook_link,
+                        active,
+                        sold
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    session["user_id"],
+                    titulo,
+                    descripcion_final,
+                    precio,
+                    imagen,
+                    tienda_nombre,
+                    ciudad,
+                    whatsapp_link,
+                    instagram_link,
+                    facebook_link,
+                    1,
+                    0
+                ))
+
+                publicados += 1
+
+            conn.commit()
+            conn.close()
+
+            flash(f"Se publicaron {publicados} productos en OFERTAS SANTIAGO.", "success")
+            return redirect(url_for("admin.admin_import_web"))
+
+    return render_template("admin_import_web.html", extracted=extracted)

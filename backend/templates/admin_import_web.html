@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Importar web | OFERTAS SANTIAGO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        .box {
+            background: #101b2f;
+            border-radius: 22px;
+            padding: 25px;
+            border: 1px solid rgba(29,211,255,0.18);
+            margin-bottom: 20px;
+        }
+        .title {
+            color: #1dd3ff;
+            font-weight: 900;
+        }
+        .form-control, .form-select, textarea.form-control {
+            background: #0a1322;
+            color: white;
+            border: 1px solid #294160;
+        }
+        .form-control:focus, .form-select:focus, textarea.form-control:focus {
+            background: #0a1322;
+            color: white;
+            border-color: #1dd3ff;
+            box-shadow: none;
+        }
+        .preview-image {
+            width: 100%;
+            max-width: 90px;
+            height: 70px;
+            object-fit: contain;
+            background: white;
+            border-radius: 10px;
+            padding: 4px;
+        }
+        .help-text {
+            color: #9fb1c8;
+            font-size: 0.92rem;
+        }
+        .table td, .table th {
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            <div>
+                <h2 class="title mb-1">Importar desde página web</h2>
+                <div>{{ session["email"] }}</div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="/admin/dashboard" class="btn btn-outline-light">Volver al admin</a>
+                <a href="/seller/dashboard" class="btn btn-info text-dark">Mi panel vendedor</a>
+                <a href="/logout" class="btn btn-danger">Cerrar sesión</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="box">
+            <h4 class="mb-3">1. Analizar página web</h4>
+
+            <form method="POST">
+                <input type="hidden" name="action" value="analyze">
+
+                <div class="row">
+                    <div class="col-md-10 mb-3">
+                        <label class="form-label">URL de la web o tienda</label>
+                        <input
+                            type="text"
+                            name="source_url"
+                            class="form-control"
+                            placeholder="Pegá el link de la tienda o catálogo"
+                            value="{{ extracted['source_url'] if extracted else '' }}"
+                            required
+                        >
+                    </div>
+
+                    <div class="col-md-2 mb-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-success w-100">Analizar web</button>
+                    </div>
+                </div>
+
+                <div class="help-text">
+                    El sistema intenta detectar tienda, redes y productos de la página.
+                </div>
+            </form>
+        </div>
+
+        {% if extracted %}
+        <div class="box">
+            <h4 class="mb-3">2. Revisar antes de publicar</h4>
+
+            <form method="POST">
+                <input type="hidden" name="action" value="publish_all">
+                <input type="hidden" name="source_url" value="{{ extracted.get('source_url', '') }}">
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tienda</label>
+                        <input type="text" name="tienda_nombre" class="form-control" value="{{ extracted.get('tienda_nombre', '') }}" required>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Ciudad</label>
+                        <input type="text" name="ciudad" class="form-control" placeholder="Ej: Santiago Capital" required>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">WhatsApp</label>
+                        <input type="text" name="whatsapp_link" class="form-control" value="{{ extracted.get('whatsapp_link', '') }}">
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Instagram</label>
+                        <input type="text" name="instagram_link" class="form-control" value="{{ extracted.get('instagram_link', '') }}">
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Facebook</label>
+                        <input type="text" name="facebook_link" class="form-control" value="{{ extracted.get('facebook_link', '') }}">
+                    </div>
+                </div>
+
+                <div class="table-responsive mt-3">
+                    <table class="table table-dark table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Publicar</th>
+                                <th>Imagen</th>
+                                <th>Título</th>
+                                <th>Precio</th>
+                                <th>Link original</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in extracted.get('products', []) %}
+                            <tr>
+                                <td>
+                                    <input type="checkbox" name="producto_selected[]" value="{{ loop.index0 }}" checked>
+                                </td>
+                                <td>
+                                    {% if item.get('imagen') %}
+                                        <img src="{{ item.get('imagen') }}" class="preview-image" alt="producto">
+                                    {% else %}
+                                        <span class="text-secondary">Sin imagen</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <input type="text" name="producto_titulo[]" class="form-control" value="{{ item.get('titulo', '') }}">
+                                    <input type="hidden" name="producto_descripcion[]" value="{{ item.get('descripcion', '') }}">
+                                    <input type="hidden" name="producto_imagen[]" value="{{ item.get('imagen', '') }}">
+                                    <input type="hidden" name="producto_link[]" value="{{ item.get('source_url', '') }}">
+                                </td>
+                                <td style="min-width: 160px;">
+                                    <input type="text" name="producto_precio[]" class="form-control precio-web" value="{{ item.get('precio', '') }}" inputmode="numeric">
+                                </td>
+                                <td style="min-width: 220px;">
+                                    {% if item.get('source_url') %}
+                                        <a href="{{ item.get('source_url') }}" target="_blank" class="btn btn-sm btn-outline-info">Abrir link</a>
+                                    {% else %}
+                                        <span class="text-secondary">Sin link</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5">No se detectaron productos en esta web.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if extracted.get('products') %}
+                <button type="submit" class="btn btn-info text-dark fw-bold mt-3">
+                    Publicar todos los seleccionados
+                </button>
+                {% endif %}
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function formatearMiles(valor) {
+            const soloNumeros = valor.replace(/\D/g, "");
+            if (!soloNumeros) return "";
+            return soloNumeros.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        }
+
+        document.querySelectorAll(".precio-web").forEach(input => {
+            input.addEventListener("input", function () {
+                this.value = formatearMiles(this.value);
+            });
+        });
+    </script>
+</body>
+</html>
