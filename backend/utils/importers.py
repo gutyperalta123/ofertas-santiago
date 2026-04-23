@@ -1,18 +1,10 @@
 # =========================================================
 # IMPORTADORES POTENCIADOS
 # =========================================================
-# - Publicaciones puntuales (Instagram/Facebook/Otro)
-# - Catálogos web / tiendas / listados de productos
-#
-# Estrategia:
-# 1) Open Graph / Twitter / Meta
-# 2) JSON-LD / Schema.org
-# 3) Datos embebidos en scripts (Next/Nuxt/window.__...)
-# 4) DOM visual de tarjetas de productos
-# =========================================================
 
 import json
 import re
+import html
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -35,7 +27,18 @@ HEADERS = {
 def clean_text(text):
     if not text:
         return ""
-    return re.sub(r"\s+", " ", str(text)).strip()
+    text = html.unescape(str(text))
+    text = re.sub(r"<br\s*/?>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def shorten_text(text, limit=220):
+    text = clean_text(text)
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0] + "..."
 
 
 def get_meta(soup, attr_name, attr_value):
@@ -81,12 +84,6 @@ def price_to_number_for_sort(price_text):
 
 
 def detect_price(text):
-    """
-    Detecta formatos comunes:
-    $ 259.999
-    ARS 120.000
-    1.250.000
-    """
     if not text:
         return ""
 
@@ -107,6 +104,37 @@ def detect_price(text):
     return ""
 
 
+def is_bad_title(title):
+    title = clean_text(title)
+    if not title:
+        return True
+
+    lowered = title.lower()
+
+    bad_exact = {
+        "comprar",
+        "ver más",
+        "ver detalle",
+        "agregar",
+        "agregar al carrito",
+        "oferta",
+        "precio",
+    }
+
+    if lowered in bad_exact:
+        return True
+
+    # si el "título" es casi puro precio, descartamos
+    if re.fullmatch(r"[\$0-9\.\,\s]+", title):
+        return True
+
+    # si es demasiado corto
+    if len(title) < 4:
+        return True
+
+    return False
+
+
 def sort_products_by_price(products):
     return sorted(products, key=lambda x: price_to_number_for_sort(x.get("precio", "")))
 
@@ -121,7 +149,7 @@ def dedupe_products(products):
         imagen = clean_text(p.get("imagen", ""))
         source_url = clean_text(p.get("source_url", ""))
 
-        if len(titulo) < 4:
+        if is_bad_title(titulo):
             continue
 
         key = (
@@ -138,7 +166,7 @@ def dedupe_products(products):
 
         unique.append({
             "titulo": titulo,
-            "descripcion": clean_text(p.get("descripcion", "")),
+            "descripcion": shorten_text(p.get("descripcion", ""), 220),
             "precio": precio,
             "imagen": imagen,
             "source_url": source_url,
@@ -207,7 +235,7 @@ def analyze_publication_link(url, source_type):
         "source_type": source_type,
         "source_url": final_url,
         "titulo": clean_text(title),
-        "descripcion": clean_text(description),
+        "descripcion": shorten_text(description, 220),
         "imagen": absolute_image_url(image, final_url),
         "tienda_nombre": clean_text(tienda),
         "precio": price,
@@ -285,10 +313,10 @@ def _walk_jsonld(node, base_url, found_products):
         elif isinstance(offers, dict):
             price = normalize_price_text(offers.get("price", ""))
 
-        if name:
+        if name and not is_bad_title(name):
             found_products.append({
                 "titulo": name,
-                "descripcion": description,
+                "descripcion": shorten_text(description, 220),
                 "precio": price,
                 "imagen": image,
                 "source_url": url_value,
@@ -324,7 +352,7 @@ def extract_jsonld_products(soup, base_url):
 
 
 # =========================================================
-# EXTRACCIÓN DE JSON EMBEBIDO EN SCRIPTS
+# JSON EMBEBIDO
 # =========================================================
 
 def safe_json_loads(raw):
@@ -335,10 +363,6 @@ def safe_json_loads(raw):
 
 
 def deep_extract_products_from_data(data, base_url, found_products):
-    """
-    Recorre cualquier JSON buscando objetos con pinta de producto:
-    name/title + price + image/url
-    """
     if isinstance(data, list):
         for item in data:
             deep_extract_products_from_data(item, base_url, found_products)
@@ -385,10 +409,12 @@ def deep_extract_products_from_data(data, base_url, found_products):
     price = normalize_price_text(possible_price)
     image = absolute_image_url(str(possible_image), base_url) if possible_image else ""
     source_url = normalize_link(str(possible_url), base_url) if possible_url else ""
-    description = clean_text(data.get("description") or data.get("shortDescription") or "")
+    description = shorten_text(
+        data.get("description") or data.get("shortDescription") or "",
+        220
+    )
 
-    # filtro bastante permisivo
-    if title and (price or image):
+    if title and not is_bad_title(title) and (price or image):
         found_products.append({
             "titulo": title,
             "descripcion": description,
@@ -405,13 +431,9 @@ def deep_extract_products_from_data(data, base_url, found_products):
 def extract_embedded_json_products(soup, base_url):
     products = []
 
-    script_ids_or_types = [
-        "__NEXT_DATA__",
-        "__NUXT_DATA__",
-    ]
+    known_ids = ["__NEXT_DATA__", "__NUXT_DATA__"]
 
-    # scripts por id conocido
-    for sid in script_ids_or_types:
+    for sid in known_ids:
         tag = soup.find("script", id=sid)
         if tag:
             raw = tag.string or tag.get_text(strip=True)
@@ -419,11 +441,8 @@ def extract_embedded_json_products(soup, base_url):
             if data is not None:
                 deep_extract_products_from_data(data, base_url, products)
 
-    # window.__... = {...}
     script_texts = soup.find_all("script")
     regexes = [
-        r"__NEXT_DATA__\s*=\s*({.*?})\s*;",
-        r"__NUXT__\s*=\s*({.*?})\s*;",
         r"window\.__INITIAL_STATE__\s*=\s*({.*?})\s*;",
         r"window\.__PRELOADED_STATE__\s*=\s*({.*?})\s*;",
         r"window\.__STATE__\s*=\s*({.*?})\s*;",
@@ -437,8 +456,7 @@ def extract_embedded_json_products(soup, base_url):
         for rx in regexes:
             match = re.search(rx, raw, re.DOTALL)
             if match:
-                json_candidate = match.group(1)
-                data = safe_json_loads(json_candidate)
+                data = safe_json_loads(match.group(1))
                 if data is not None:
                     deep_extract_products_from_data(data, base_url, products)
 
@@ -446,7 +464,7 @@ def extract_embedded_json_products(soup, base_url):
 
 
 # =========================================================
-# EXTRACCIÓN DESDE DOM
+# DOM VISUAL
 # =========================================================
 
 def extract_dom_products(soup, base_url):
@@ -483,18 +501,26 @@ def extract_dom_products(soup, base_url):
         title = ""
         for title_tag in tag.find_all(["h1", "h2", "h3", "h4", "strong", "span"]):
             t = clean_text(title_tag.get_text(" ", strip=True))
-            if len(t) >= 5 and t.lower() not in ["comprar", "agregar", "ver más", "ver detalle"]:
+            if is_bad_title(t):
+                continue
+            if detect_price(t) and len(t) < 20:
+                continue
+            if len(t) >= 5:
                 title = t
                 break
 
         if not title:
-            title = text[:120]
+            # intentamos agarrar texto inicial útil, sin precio puro
+            candidate = text[:120]
+            if not is_bad_title(candidate):
+                title = candidate
 
-        # regla flexible
         if not title:
             continue
+
         if not image and not price:
             continue
+
         if not link and not price:
             continue
 
@@ -515,7 +541,7 @@ def extract_dom_products(soup, base_url):
 
 
 # =========================================================
-# IMPORTADOR WEB PRINCIPAL
+# IMPORTADOR WEB
 # =========================================================
 
 def analyze_web_catalog(url):
