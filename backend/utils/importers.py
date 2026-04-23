@@ -7,7 +7,7 @@ import re
 import html
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 
 HEADERS = {
@@ -81,6 +81,22 @@ def price_to_number_for_sort(price_text):
         return float(str(price_text).replace(".", "").replace(",", "."))
     except Exception:
         return float("inf")
+
+
+def price_text_to_int(price_text):
+    if not price_text:
+        return 0
+    try:
+        return int(float(str(price_text).replace(".", "").replace(",", ".")))
+    except Exception:
+        return 0
+
+
+def int_to_price_text(value):
+    try:
+        return f"{int(value):,}".replace(",", ".")
+    except Exception:
+        return ""
 
 
 def format_price_for_display(value):
@@ -175,10 +191,6 @@ def has_product_keywords(text):
 
 
 def title_score(title):
-    """
-    Puntaje de calidad del título.
-    Más alto = más probable que sea nombre de producto real.
-    """
     title = clean_text(title)
     lowered = title.lower()
 
@@ -220,15 +232,12 @@ def title_score(title):
     if has_product_keywords(title):
         score += 50
 
-    # mezcla letras y números suele ser modelo real
     if re.search(r"[a-zA-Z]", title) and re.search(r"\d", title):
         score += 20
 
-    # varias palabras
     if len(title.split()) >= 3:
         score += 15
 
-    # si parece puro texto de sistema, resta
     bad_words = [
         "contacto", "carrito", "newsletter", "correo", "email",
         "whatsapp", "facebook", "instagram", "inicio", "menu"
@@ -241,6 +250,39 @@ def title_score(title):
 
 def is_bad_title(title):
     return title_score(title) < 10
+
+
+def maybe_fix_extra_zero(price_text, base_url):
+    """
+    Corrige sitios donde el precio viene 10 veces más alto.
+    Ej:
+    4.299.990 -> 429.999
+    3.299.990 -> 329.999
+    """
+    if not price_text:
+        return price_text
+
+    domain = urlparse(base_url).netloc.lower()
+    n = price_text_to_int(price_text)
+
+    if n <= 0:
+        return price_text
+
+    known_problem_domains = [
+        "megatone",
+        "naldo",
+    ]
+
+    if any(d in domain for d in known_problem_domains):
+        if n >= 1000000 and n % 10 == 0:
+            reduced = n // 10
+
+            # si al dividir por 10 queda un precio más lógico tipo 329.999 / 429.999 / 599.990
+            ending = reduced % 1000
+            if ending in (999, 990, 900):
+                return int_to_price_text(reduced)
+
+    return price_text
 
 
 def sort_products_by_price(products):
@@ -425,6 +467,7 @@ def _walk_jsonld(node, base_url, found_products):
             price = normalize_price_text(offers.get("price", ""))
 
         price = detect_price(price)
+        price = maybe_fix_extra_zero(price, base_url)
 
         if name and not is_bad_title(name) and price:
             found_products.append({
@@ -520,6 +563,7 @@ def deep_extract_products_from_data(data, base_url, found_products):
 
     title = clean_text(possible_title)
     price = detect_price(normalize_price_text(possible_price))
+    price = maybe_fix_extra_zero(price, base_url)
     image = absolute_image_url(str(possible_image), base_url) if possible_image else ""
     source_url = normalize_link(str(possible_url), base_url) if possible_url else ""
     description = shorten_text(
@@ -589,7 +633,6 @@ def choose_best_title_from_block(block):
             continue
         candidates.append(candidate)
 
-    # ordenamos por score descendente
     scored = []
     for candidate in candidates:
         scored.append((title_score(candidate), candidate))
@@ -632,6 +675,7 @@ def extract_dom_products(soup, base_url):
             image = absolute_image_url(image, base_url)
 
         price = detect_price(text)
+        price = maybe_fix_extra_zero(price, base_url)
 
         title = choose_best_title_from_block(tag)
 
