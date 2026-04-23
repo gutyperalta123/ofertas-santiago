@@ -1,0 +1,10 @@
+[33mec87c97[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m fix playwright + importador web nuevo
+[33m3b6d4d3[m agrega importador web con playwright
+[33mf4250f3[m corrige deteccion de precios reales en importador web
+[33mc9aaebc[m corrige importador web y elimina productos realmente
+[33m3e58730[m corrige html sucio y mejora extracción de títulos y precios
+[33m2867d32[m mejora importador web potente y unifica acceso admin
+[33m77a7076[m mejora importador web y agrega acciones masivas
+[33m586682b[m agrega importador de webs para admin
+[33m136cbd4[m mejora importador admin con imagen propia y precio formateado
+[33mb6bca55[m mejora importador admin sin mostrar link crudo

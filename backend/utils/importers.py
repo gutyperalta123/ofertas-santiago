@@ -92,43 +92,26 @@ def format_price_for_display(value):
 
 
 def is_valid_price_number(n):
-    """
-    Filtramos números chicos para evitar:
-    1, 2, 12, 65, 75, SKU parciales, cuotas, etc.
-    Ajustado para precios argentinos.
-    """
     return n >= 1000
 
 
 def detect_price_candidates(text):
-    """
-    Busca todos los posibles precios en un texto.
-    """
     if not text:
         return []
 
     text = clean_text(text)
-
     candidates = []
 
     patterns = [
-        # $ 1.322.313 o $1.322.313,00
         r"(?:\$|ARS|ars)\s*([0-9]{1,3}(?:[.\,][0-9]{3})+(?:[\,][0-9]{1,2})?)",
-        # números grandes con separador de miles, aunque no tengan $
         r"\b([0-9]{1,3}(?:\.[0-9]{3})+)\b",
         r"\b([0-9]{1,3}(?:,[0-9]{3})+)\b",
-        # número corrido largo
         r"\b([0-9]{4,})\b",
     ]
 
     for pattern in patterns:
         for match in re.finditer(pattern, text):
             raw_value = match.group(1).strip()
-
-            # mantenemos versión display
-            display_value = raw_value.replace(",", ".")
-
-            # para validar como número
             numeric_str = raw_value.replace(".", "").replace(",", ".")
             try:
                 numeric_value = float(numeric_str)
@@ -142,56 +125,122 @@ def detect_price_candidates(text):
 
 
 def detect_price(text):
-    """
-    Devuelve el mejor precio detectado.
-    Regla: si hay varios, usamos el mayor dentro del bloque analizado,
-    porque en ecommerce suelen aparecer cuotas pequeñas, descuentos o números menores mezclados.
-    """
     candidates = detect_price_candidates(text)
     if not candidates:
         return ""
-
-    # usamos el valor numérico más alto del bloque
     candidates.sort(key=lambda x: x[0], reverse=True)
     return candidates[0][1]
 
 
-def is_bad_title(title):
-    title = clean_text(title)
-    if not title:
-        return True
+def looks_like_email(text):
+    return bool(re.search(r"[^@\s]+@[^@\s]+\.[^@\s]+", text or ""))
 
-    lowered = title.lower()
 
-    basura = [
-        "sku",
-        "iva",
-        "sin iva",
-        "%",
-        "descuento",
-        "off",
-        "precio",
-        "cuotas",
-        "código",
-        "codigo",
-        "ahora",
-        "antes",
-        "ver más",
-        "ver detalle",
-        "agregar al carrito",
+def looks_like_category_title(text):
+    text = clean_text(text).lower()
+
+    categorias = [
+        "tv, audio y video",
+        "tv audio y video",
+        "electrodomésticos",
+        "electrodomesticos",
+        "categoría",
+        "categoria",
+        "marca",
+        "hogar",
+        "tecnología",
+        "tecnologia",
+        "celulares",
+        "informática",
+        "informatica",
+        "electro",
     ]
 
-    if any(b in lowered for b in basura):
-        return True
+    return text in categorias
 
-    # si es solo números, precio o símbolos
+
+def has_product_keywords(text):
+    text = clean_text(text).lower()
+
+    keywords = [
+        "smart tv", "tv", "heladera", "lavarropas", "lavasecarropas",
+        "freidora", "cocina", "horno", "aire", "acondicionador",
+        "notebook", "celular", "samsung", "lg", "philips", "tcl",
+        "whirlpool", "philco", "motorola", "xiaomi", "midea",
+        "electrolux", "drean", "gafa", "noblex", "smartphone",
+        "monitor", "tablet", "microondas", "cafetera", "aspiradora"
+    ]
+
+    return any(k in text for k in keywords)
+
+
+def title_score(title):
+    """
+    Puntaje de calidad del título.
+    Más alto = más probable que sea nombre de producto real.
+    """
+    title = clean_text(title)
+    lowered = title.lower()
+
+    if not title:
+        return -100
+
+    if looks_like_email(title):
+        return -100
+
+    if looks_like_category_title(title):
+        return -100
+
     if re.fullmatch(r"[\$0-9\.\,\s\-\%]+", title):
-        return True
+        return -100
 
-    if len(title) < 5:
-        return True
+    if "ítem agregado" in lowered or "item agregado" in lowered:
+        return -100
 
-    return False
+    if "agregar al carrito" in lowered:
+        return -100
+
+    if "ver detalle" in lowered or "ver más" in lowered:
+        return -100
+
+    if "sku" in lowered:
+        return -100
+
+    if "marca" == lowered or "categoria" == lowered or "categoría" == lowered:
+        return -100
+
+    score = 0
+
+    if len(title) >= 10:
+        score += 10
+
+    if len(title) >= 18:
+        score += 10
+
+    if has_product_keywords(title):
+        score += 50
+
+    # mezcla letras y números suele ser modelo real
+    if re.search(r"[a-zA-Z]", title) and re.search(r"\d", title):
+        score += 20
+
+    # varias palabras
+    if len(title.split()) >= 3:
+        score += 15
+
+    # si parece puro texto de sistema, resta
+    bad_words = [
+        "contacto", "carrito", "newsletter", "correo", "email",
+        "whatsapp", "facebook", "instagram", "inicio", "menu"
+    ]
+    if any(w in lowered for w in bad_words):
+        score -= 40
+
+    return score
+
+
+def is_bad_title(title):
+    return title_score(title) < 10
 
 
 def sort_products_by_price(products):
@@ -531,6 +580,28 @@ def extract_embedded_json_products(soup, base_url):
 # DOM VISUAL
 # =========================================================
 
+def choose_best_title_from_block(block):
+    candidates = []
+
+    for t in block.find_all(["h1", "h2", "h3", "h4", "strong", "span", "p", "a"]):
+        candidate = clean_text(t.get_text(" ", strip=True))
+        if not candidate:
+            continue
+        candidates.append(candidate)
+
+    # ordenamos por score descendente
+    scored = []
+    for candidate in candidates:
+        scored.append((title_score(candidate), candidate))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    if scored and scored[0][0] >= 10:
+        return scored[0][1]
+
+    return ""
+
+
 def extract_dom_products(soup, base_url):
     products = []
     candidate_containers = []
@@ -562,22 +633,7 @@ def extract_dom_products(soup, base_url):
 
         price = detect_price(text)
 
-        title = ""
-        for title_tag in tag.find_all(["h1", "h2", "h3", "h4", "strong", "span"]):
-            t = clean_text(title_tag.get_text(" ", strip=True))
-            if is_bad_title(t):
-                continue
-            # si el "titulo" parece puro precio, lo descartamos
-            if detect_price(t) and len(t) < 25:
-                continue
-            if len(t) >= 5:
-                title = t
-                break
-
-        if not title:
-            candidate = text[:120]
-            if not is_bad_title(candidate) and not detect_price(candidate):
-                title = candidate
+        title = choose_best_title_from_block(tag)
 
         if not title:
             continue
