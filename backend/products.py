@@ -91,8 +91,6 @@ def list_products():
             instagram_link,
             facebook_link
         FROM products
-        WHERE active = 1
-          AND sold = 0
         ORDER BY precio ASC, id DESC
     """).fetchall()
 
@@ -124,9 +122,7 @@ def list_cities():
     rows = c.execute("""
         SELECT DISTINCT ciudad
         FROM products
-        WHERE active = 1
-          AND sold = 0
-          AND ciudad IS NOT NULL
+        WHERE ciudad IS NOT NULL
           AND TRIM(ciudad) <> ''
         ORDER BY ciudad COLLATE NOCASE ASC
     """).fetchall()
@@ -203,11 +199,9 @@ def seller_dashboard():
                 ciudad,
                 whatsapp_link,
                 instagram_link,
-                facebook_link,
-                active,
-                sold
+                facebook_link
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             session["user_id"],
             titulo,
@@ -218,9 +212,7 @@ def seller_dashboard():
             ciudad,
             whatsapp_link,
             instagram_link,
-            facebook_link,
-            1,
-            0
+            facebook_link
         ))
 
         conn.commit()
@@ -400,9 +392,9 @@ def delete_product(product_id):
         flash("No podés eliminar este producto.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
+    # ELIMINACIÓN REAL
     c.execute("""
-        UPDATE products
-        SET active = 0
+        DELETE FROM products
         WHERE id = ?
     """, (product_id,))
 
@@ -441,6 +433,7 @@ def mark_as_sold(product_id):
         flash("No podés marcar este producto como vendido.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
+    # si querés también podría borrarlo, pero lo dejamos como vendido
     c.execute("""
         UPDATE products
         SET sold = 1
@@ -504,9 +497,9 @@ def bulk_action_products():
             continue
 
         if bulk_action == "delete":
+            # ELIMINACIÓN REAL
             c.execute("""
-                UPDATE products
-                SET active = 0
+                DELETE FROM products
                 WHERE id = ?
             """, (pid_int,))
             afectados += 1

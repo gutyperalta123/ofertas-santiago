@@ -84,22 +84,29 @@ def price_to_number_for_sort(price_text):
 
 
 def detect_price(text):
+    """
+    Detecta precios comunes:
+    $ 259.999
+    ARS 120.000
+    1.250.000
+    """
     if not text:
         return ""
 
     text = clean_text(text)
 
     patterns = [
-        r"(?:\$|ARS|ars)\s*([0-9]{1,3}(?:[.\,][0-9]{3})+(?:[\,][0-9]{1,2})?)",
-        r"(?:\$|ARS|ars)\s*([0-9]+(?:[\,][0-9]{1,2})?)",
-        r"\b([0-9]{1,3}(?:[.\,][0-9]{3})+)\b",
+        r"\$\s*([0-9]{1,3}(?:[.\,][0-9]{3})+)",
+        r"\$\s*([0-9]+)",
+        r"(?:ARS|ars)\s*([0-9]{1,3}(?:[.\,][0-9]{3})+)",
+        r"\b([0-9]{1,3}(?:\.[0-9]{3})+)\b",
     ]
 
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
             value = match.group(1).strip()
-            return normalize_price_text(value)
+            return value.replace(",", ".")
 
     return ""
 
@@ -111,25 +118,32 @@ def is_bad_title(title):
 
     lowered = title.lower()
 
-    bad_exact = {
-        "comprar",
+    basura = [
+        "sku",
+        "iva",
+        "sin iva",
+        "%",
+        "descuento",
+        "off",
+        "precio",
+        "cuotas",
+        "código",
+        "codigo",
+        "ahora",
+        "antes",
         "ver más",
         "ver detalle",
-        "agregar",
         "agregar al carrito",
-        "oferta",
-        "precio",
-    }
+    ]
 
-    if lowered in bad_exact:
+    if any(b in lowered for b in basura):
         return True
 
-    # si el "título" es casi puro precio, descartamos
-    if re.fullmatch(r"[\$0-9\.\,\s]+", title):
+    # si es solo números, precio o símbolos
+    if re.fullmatch(r"[\$0-9\.\,\s\-\%]+", title):
         return True
 
-    # si es demasiado corto
-    if len(title) < 4:
+    if len(title) < 5:
         return True
 
     return False
@@ -150,6 +164,10 @@ def dedupe_products(products):
         source_url = clean_text(p.get("source_url", ""))
 
         if is_bad_title(titulo):
+            continue
+
+        # descartamos productos sin precio real
+        if not precio or precio in ["0", "0.0", "0.00"]:
             continue
 
         key = (
@@ -414,7 +432,7 @@ def deep_extract_products_from_data(data, base_url, found_products):
         220
     )
 
-    if title and not is_bad_title(title) and (price or image):
+    if title and not is_bad_title(title) and price:
         found_products.append({
             "titulo": title,
             "descripcion": description,
@@ -503,25 +521,24 @@ def extract_dom_products(soup, base_url):
             t = clean_text(title_tag.get_text(" ", strip=True))
             if is_bad_title(t):
                 continue
-            if detect_price(t) and len(t) < 20:
+            if detect_price(t) and len(t) < 25:
                 continue
             if len(t) >= 5:
                 title = t
                 break
 
         if not title:
-            # intentamos agarrar texto inicial útil, sin precio puro
             candidate = text[:120]
-            if not is_bad_title(candidate):
+            if not is_bad_title(candidate) and not detect_price(candidate):
                 title = candidate
 
         if not title:
             continue
 
-        if not image and not price:
+        if not price:
             continue
 
-        if not link and not price:
+        if not image and not link:
             continue
 
         key = (title.lower(), price, image, link)
