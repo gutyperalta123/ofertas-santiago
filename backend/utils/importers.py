@@ -1,8 +1,14 @@
 # =========================================================
-# IMPORTADORES SEMI-AUTOMÁTICOS
+# IMPORTADORES POTENCIADOS
 # =========================================================
-# - analyze_publication_link: para publicaciones puntuales
-# - analyze_web_catalog: para páginas web / catálogos
+# - Publicaciones puntuales (Instagram/Facebook/Otro)
+# - Catálogos web / tiendas / listados de productos
+#
+# Estrategia:
+# 1) Open Graph / Twitter / Meta
+# 2) JSON-LD / Schema.org
+# 3) Datos embebidos en scripts (Next/Nuxt/window.__...)
+# 4) DOM visual de tarjetas de productos
 # =========================================================
 
 import json
@@ -22,48 +28,27 @@ HEADERS = {
 }
 
 
-def get_meta(soup, attr_name, attr_value):
-    tag = soup.find("meta", attrs={attr_name: attr_value})
-    if tag and tag.get("content"):
-        return tag.get("content").strip()
-    return ""
-
+# =========================================================
+# UTILIDADES
+# =========================================================
 
 def clean_text(text):
     if not text:
         return ""
-    text = re.sub(r"\s+", " ", str(text)).strip()
-    return text
+    return re.sub(r"\s+", " ", str(text)).strip()
 
 
-def normalize_price_to_text(value):
-    if value is None:
-        return ""
-    value = str(value).strip()
-    if not value:
-        return ""
-    value = value.replace(",", ".")
-    return value
-
-
-def detect_price(text):
-    if not text:
-        return ""
-
-    patterns = [
-        r"(?:\$|ARS|ars)\s*([0-9]{1,3}(?:[.\,][0-9]{3})+(?:[\,][0-9]{1,2})?)",
-        r"(?:\$|ARS|ars)\s*([0-9]+(?:[\,][0-9]{1,2})?)",
-        r"\b([0-9]{1,3}(?:[.\,][0-9]{3})+)\b",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            value = match.group(1).strip()
-            value = value.replace(",", ".")
-            return value
-
+def get_meta(soup, attr_name, attr_value):
+    tag = soup.find("meta", attrs={attr_name: attr_value})
+    if tag and tag.get("content"):
+        return clean_text(tag.get("content"))
     return ""
+
+
+def normalize_link(link, base_url):
+    if not link:
+        return ""
+    return urljoin(base_url, link)
 
 
 def absolute_image_url(image_url, base_url):
@@ -76,20 +61,103 @@ def absolute_image_url(image_url, base_url):
     return urljoin(base_url, image_url)
 
 
-def normalize_link(link, base_url):
-    if not link:
+def normalize_price_text(price_text):
+    if price_text is None:
         return ""
-    return urljoin(base_url, link)
+    price_text = str(price_text).strip()
+    if not price_text:
+        return ""
+    price_text = price_text.replace(",", ".")
+    return price_text
 
+
+def price_to_number_for_sort(price_text):
+    if not price_text:
+        return float("inf")
+    try:
+        return float(str(price_text).replace(".", "").replace(",", "."))
+    except Exception:
+        return float("inf")
+
+
+def detect_price(text):
+    """
+    Detecta formatos comunes:
+    $ 259.999
+    ARS 120.000
+    1.250.000
+    """
+    if not text:
+        return ""
+
+    text = clean_text(text)
+
+    patterns = [
+        r"(?:\$|ARS|ars)\s*([0-9]{1,3}(?:[.\,][0-9]{3})+(?:[\,][0-9]{1,2})?)",
+        r"(?:\$|ARS|ars)\s*([0-9]+(?:[\,][0-9]{1,2})?)",
+        r"\b([0-9]{1,3}(?:[.\,][0-9]{3})+)\b",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = match.group(1).strip()
+            return normalize_price_text(value)
+
+    return ""
+
+
+def sort_products_by_price(products):
+    return sorted(products, key=lambda x: price_to_number_for_sort(x.get("precio", "")))
+
+
+def dedupe_products(products):
+    unique = []
+    seen = set()
+
+    for p in products:
+        titulo = clean_text(p.get("titulo", ""))
+        precio = clean_text(p.get("precio", ""))
+        imagen = clean_text(p.get("imagen", ""))
+        source_url = clean_text(p.get("source_url", ""))
+
+        if len(titulo) < 4:
+            continue
+
+        key = (
+            titulo.lower(),
+            precio,
+            imagen,
+            source_url,
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        unique.append({
+            "titulo": titulo,
+            "descripcion": clean_text(p.get("descripcion", "")),
+            "precio": precio,
+            "imagen": imagen,
+            "source_url": source_url,
+            "selected": True,
+        })
+
+    return unique
+
+
+# =========================================================
+# IMPORTADOR DE PUBLICACIONES
+# =========================================================
 
 def analyze_publication_link(url, source_type):
-    response = requests.get(url, headers=HEADERS, timeout=20, allow_redirects=True)
+    response = requests.get(url, headers=HEADERS, timeout=25, allow_redirects=True)
     response.raise_for_status()
 
-    html = response.text
     final_url = response.url
-
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(response.text, "html.parser")
 
     og_title = get_meta(soup, "property", "og:title")
     og_description = get_meta(soup, "property", "og:description")
@@ -110,23 +178,21 @@ def analyze_publication_link(url, source_type):
 
     if not image:
         first_img = soup.find("img")
-        if first_img and first_img.get("src"):
-            image = first_img.get("src").strip()
+        if first_img:
+            img_src = first_img.get("src") or first_img.get("data-src") or ""
+            image = absolute_image_url(img_src, final_url)
 
-    image = absolute_image_url(image, final_url)
-
-    full_text_candidates = [
-        title,
-        description,
-        page_title,
-        description_tag,
-        soup.get_text(" ", strip=True)[:5000],
-    ]
-    full_text = " ".join([clean_text(x) for x in full_text_candidates if x])
+    full_text = " ".join([
+        clean_text(title),
+        clean_text(description),
+        clean_text(page_title),
+        clean_text(description_tag),
+        clean_text(soup.get_text(" ", strip=True)[:5000]),
+    ])
 
     price = detect_price(full_text)
-    tienda = site_name
 
+    tienda = site_name
     if not tienda:
         if "instagram.com" in final_url:
             parts = [p for p in final_url.split("/") if p and "instagram.com" not in p and "www." not in p]
@@ -137,43 +203,42 @@ def analyze_publication_link(url, source_type):
             if parts:
                 tienda = parts[0]
 
-    tienda = clean_text(tienda)
-
     return {
         "source_type": source_type,
         "source_url": final_url,
         "titulo": clean_text(title),
         "descripcion": clean_text(description),
-        "imagen": image,
-        "tienda_nombre": tienda,
+        "imagen": absolute_image_url(image, final_url),
+        "tienda_nombre": clean_text(tienda),
         "precio": price,
     }
 
+
+# =========================================================
+# REDES DEL SITIO
+# =========================================================
 
 def extract_site_social_links(soup, base_url):
     instagram = ""
     facebook = ""
     whatsapp = ""
 
-    links = soup.find_all("a", href=True)
-
-    for a in links:
-        href = a.get("href", "").strip()
-        href_full = normalize_link(href, base_url)
-        href_lower = href_full.lower()
+    for a in soup.find_all("a", href=True):
+        href = normalize_link(a.get("href", "").strip(), base_url)
+        href_lower = href.lower()
 
         if not instagram and "instagram.com" in href_lower:
-            instagram = href_full
+            instagram = href
 
         if not facebook and "facebook.com" in href_lower:
-            facebook = href_full
+            facebook = href
 
         if not whatsapp and (
             "wa.me/" in href_lower
             or "whatsapp.com" in href_lower
             or "api.whatsapp.com" in href_lower
         ):
-            whatsapp = href_full
+            whatsapp = href
 
     return {
         "instagram_link": instagram,
@@ -182,69 +247,63 @@ def extract_site_social_links(soup, base_url):
     }
 
 
-def jsonld_to_products(data, base_url):
-    products = []
+# =========================================================
+# JSON-LD / SCHEMA.ORG
+# =========================================================
 
-    def walk(node):
-        if isinstance(node, list):
-            for item in node:
-                walk(item)
-            return
+def _walk_jsonld(node, base_url, found_products):
+    if isinstance(node, list):
+        for item in node:
+            _walk_jsonld(item, base_url, found_products)
+        return
 
-        if not isinstance(node, dict):
-            return
+    if not isinstance(node, dict):
+        return
 
-        node_type = node.get("@type", "")
-        if isinstance(node_type, list):
-            node_type = " ".join(node_type)
+    node_type = node.get("@type", "")
+    if isinstance(node_type, list):
+        node_type = " ".join(node_type)
+    node_type = str(node_type).lower()
 
-        node_type = str(node_type).lower()
+    if "product" in node_type:
+        name = clean_text(node.get("name"))
+        description = clean_text(node.get("description"))
 
-        # Product directo
-        if "product" in node_type:
-            name = clean_text(node.get("name"))
-            description = clean_text(node.get("description"))
-            image = node.get("image", "")
-            if isinstance(image, list):
-                image = image[0] if image else ""
-            image = absolute_image_url(str(image), base_url)
+        image = node.get("image", "")
+        if isinstance(image, list):
+            image = image[0] if image else ""
+        image = absolute_image_url(str(image), base_url)
 
-            offers = node.get("offers", {})
-            price = ""
+        url_value = normalize_link(node.get("url", ""), base_url)
 
-            if isinstance(offers, list) and offers:
-                offer = offers[0]
-                if isinstance(offer, dict):
-                    price = normalize_price_to_text(offer.get("price", ""))
-            elif isinstance(offers, dict):
-                price = normalize_price_to_text(offers.get("price", ""))
+        price = ""
+        offers = node.get("offers", {})
+        if isinstance(offers, list) and offers:
+            offer = offers[0]
+            if isinstance(offer, dict):
+                price = normalize_price_text(offer.get("price", ""))
+        elif isinstance(offers, dict):
+            price = normalize_price_text(offers.get("price", ""))
 
-            source_url = normalize_link(node.get("url", ""), base_url)
+        if name:
+            found_products.append({
+                "titulo": name,
+                "descripcion": description,
+                "precio": price,
+                "imagen": image,
+                "source_url": url_value,
+            })
 
-            if name:
-                products.append({
-                    "titulo": name,
-                    "descripcion": description,
-                    "precio": price,
-                    "imagen": image,
-                    "source_url": source_url,
-                })
+    if "itemlist" in node_type:
+        items = node.get("itemListElement", [])
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    _walk_jsonld(item.get("item", item), base_url, found_products)
 
-        # ItemList
-        if "itemlist" in node_type:
-            items = node.get("itemListElement", [])
-            if isinstance(items, list):
-                for item in items:
-                    if isinstance(item, dict):
-                        walk(item.get("item", item))
-
-        # recorrida general
-        for value in node.values():
-            if isinstance(value, (dict, list)):
-                walk(value)
-
-    walk(data)
-    return products
+    for value in node.values():
+        if isinstance(value, (dict, list)):
+            _walk_jsonld(value, base_url, found_products)
 
 
 def extract_jsonld_products(soup, base_url):
@@ -257,22 +316,147 @@ def extract_jsonld_products(soup, base_url):
 
         try:
             data = json.loads(raw)
-            products.extend(jsonld_to_products(data, base_url))
+            _walk_jsonld(data, base_url, products)
         except Exception:
-            # a veces el JSON-LD viene raro; seguimos
             continue
 
     return products
 
 
+# =========================================================
+# EXTRACCIÓN DE JSON EMBEBIDO EN SCRIPTS
+# =========================================================
+
+def safe_json_loads(raw):
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+def deep_extract_products_from_data(data, base_url, found_products):
+    """
+    Recorre cualquier JSON buscando objetos con pinta de producto:
+    name/title + price + image/url
+    """
+    if isinstance(data, list):
+        for item in data:
+            deep_extract_products_from_data(item, base_url, found_products)
+        return
+
+    if not isinstance(data, dict):
+        return
+
+    possible_title = (
+        data.get("name")
+        or data.get("title")
+        or data.get("productName")
+        or data.get("displayName")
+    )
+
+    possible_price = (
+        data.get("price")
+        or data.get("salePrice")
+        or data.get("listPrice")
+        or data.get("bestPrice")
+        or data.get("currentPrice")
+        or data.get("formattedPrice")
+    )
+
+    possible_image = (
+        data.get("image")
+        or data.get("imageUrl")
+        or data.get("thumbnail")
+        or data.get("thumb")
+        or data.get("mainImage")
+    )
+
+    possible_url = (
+        data.get("url")
+        or data.get("link")
+        or data.get("slug")
+        or data.get("productUrl")
+    )
+
+    if isinstance(possible_image, list):
+        possible_image = possible_image[0] if possible_image else ""
+
+    title = clean_text(possible_title)
+    price = normalize_price_text(possible_price)
+    image = absolute_image_url(str(possible_image), base_url) if possible_image else ""
+    source_url = normalize_link(str(possible_url), base_url) if possible_url else ""
+    description = clean_text(data.get("description") or data.get("shortDescription") or "")
+
+    # filtro bastante permisivo
+    if title and (price or image):
+        found_products.append({
+            "titulo": title,
+            "descripcion": description,
+            "precio": price,
+            "imagen": image,
+            "source_url": source_url,
+        })
+
+    for value in data.values():
+        if isinstance(value, (dict, list)):
+            deep_extract_products_from_data(value, base_url, found_products)
+
+
+def extract_embedded_json_products(soup, base_url):
+    products = []
+
+    script_ids_or_types = [
+        "__NEXT_DATA__",
+        "__NUXT_DATA__",
+    ]
+
+    # scripts por id conocido
+    for sid in script_ids_or_types:
+        tag = soup.find("script", id=sid)
+        if tag:
+            raw = tag.string or tag.get_text(strip=True)
+            data = safe_json_loads(raw)
+            if data is not None:
+                deep_extract_products_from_data(data, base_url, products)
+
+    # window.__... = {...}
+    script_texts = soup.find_all("script")
+    regexes = [
+        r"__NEXT_DATA__\s*=\s*({.*?})\s*;",
+        r"__NUXT__\s*=\s*({.*?})\s*;",
+        r"window\.__INITIAL_STATE__\s*=\s*({.*?})\s*;",
+        r"window\.__PRELOADED_STATE__\s*=\s*({.*?})\s*;",
+        r"window\.__STATE__\s*=\s*({.*?})\s*;",
+    ]
+
+    for script in script_texts:
+        raw = script.string or script.get_text(" ", strip=True)
+        if not raw:
+            continue
+
+        for rx in regexes:
+            match = re.search(rx, raw, re.DOTALL)
+            if match:
+                json_candidate = match.group(1)
+                data = safe_json_loads(json_candidate)
+                if data is not None:
+                    deep_extract_products_from_data(data, base_url, products)
+
+    return products
+
+
+# =========================================================
+# EXTRACCIÓN DESDE DOM
+# =========================================================
+
 def extract_dom_products(soup, base_url):
     products = []
-    seen = set()
-
     candidate_containers = []
 
     for tag_name in ["article", "li", "div", "section"]:
         candidate_containers.extend(soup.find_all(tag_name))
+
+    seen = set()
 
     for tag in candidate_containers:
         text = clean_text(tag.get_text(" ", strip=True))
@@ -283,11 +467,15 @@ def extract_dom_products(soup, base_url):
         img = tag.find("img")
 
         link = normalize_link(a.get("href"), base_url) if a else ""
+
         image = ""
         if img:
-            image = img.get("src") or img.get("data-src") or img.get("srcset") or ""
-            if image and " " in image and "http" in image:
-                image = image.split(" ")[0]
+            image = (
+                img.get("src")
+                or img.get("data-src")
+                or img.get("data-original")
+                or ""
+            )
             image = absolute_image_url(image, base_url)
 
         price = detect_price(text)
@@ -295,19 +483,18 @@ def extract_dom_products(soup, base_url):
         title = ""
         for title_tag in tag.find_all(["h1", "h2", "h3", "h4", "strong", "span"]):
             t = clean_text(title_tag.get_text(" ", strip=True))
-            if len(t) >= 5 and t.lower() not in ["comprar", "ver más", "agregar al carrito"]:
+            if len(t) >= 5 and t.lower() not in ["comprar", "agregar", "ver más", "ver detalle"]:
                 title = t
                 break
 
         if not title:
-            # tomamos primeras palabras útiles
             title = text[:120]
 
-        # filtro mínimo
-        if not title or not image:
+        # regla flexible
+        if not title:
             continue
-
-        # para catálogos reales conviene al menos link o precio
+        if not image and not price:
+            continue
         if not link and not price:
             continue
 
@@ -327,62 +514,32 @@ def extract_dom_products(soup, base_url):
     return products
 
 
-def merge_products(products):
-    merged = []
-    seen = set()
-
-    for p in products:
-        titulo = clean_text(p.get("titulo", ""))
-        precio = clean_text(p.get("precio", ""))
-        imagen = clean_text(p.get("imagen", ""))
-        link = clean_text(p.get("source_url", ""))
-
-        if len(titulo) < 4:
-            continue
-
-        key = (
-            titulo.lower(),
-            precio,
-            imagen,
-            link
-        )
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-        merged.append({
-            "titulo": titulo,
-            "descripcion": clean_text(p.get("descripcion", "")),
-            "precio": precio,
-            "imagen": imagen,
-            "source_url": link,
-            "selected": True,
-        })
-
-    return merged
-
+# =========================================================
+# IMPORTADOR WEB PRINCIPAL
+# =========================================================
 
 def analyze_web_catalog(url):
-    response = requests.get(url, headers=HEADERS, timeout=25, allow_redirects=True)
+    response = requests.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
     response.raise_for_status()
 
-    html = response.text
     final_url = response.url
-
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(response.text, "html.parser")
 
     site_name = (
         get_meta(soup, "property", "og:site_name")
+        or get_meta(soup, "name", "application-name")
         or clean_text(soup.title.string if soup.title and soup.title.string else "")
     )
 
     socials = extract_site_social_links(soup, final_url)
 
-    jsonld_products = extract_jsonld_products(soup, final_url)
-    dom_products = extract_dom_products(soup, final_url)
+    products_jsonld = extract_jsonld_products(soup, final_url)
+    products_embedded = extract_embedded_json_products(soup, final_url)
+    products_dom = extract_dom_products(soup, final_url)
 
-    products = merge_products(jsonld_products + dom_products)
+    all_products = products_jsonld + products_embedded + products_dom
+    all_products = dedupe_products(all_products)
+    all_products = sort_products_by_price(all_products)
 
     return {
         "source_url": final_url,
@@ -390,5 +547,5 @@ def analyze_web_catalog(url):
         "instagram_link": socials["instagram_link"],
         "facebook_link": socials["facebook_link"],
         "whatsapp_link": socials["whatsapp_link"],
-        "products": products[:150],
+        "products": all_products[:200],
     }

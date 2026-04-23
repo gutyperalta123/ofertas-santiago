@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OFERTAS SANTIAGO</title>
-    <link rel="icon" type="image/png" href="/static/amanecer.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 
@@ -21,9 +20,7 @@
             --facebook: #1877F2;
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
@@ -80,9 +77,7 @@
             padding: 15px 24px;
         }
 
-        .search-lg::placeholder {
-            color: #b8d3de;
-        }
+        .search-lg::placeholder { color: #b8d3de; }
 
         .filter-select {
             background-color: rgba(16, 26, 45, 0.96);
@@ -100,9 +95,7 @@
             box-shadow: none;
         }
 
-        .filter-select option {
-            color: black;
-        }
+        .filter-select option { color: black; }
 
         .hero-actions .btn {
             border-radius: 999px;
@@ -247,9 +240,7 @@
             border-radius: 20px;
         }
 
-        .footer-space {
-            height: 40px;
-        }
+        .footer-space { height: 40px; }
 
         @media (max-width: 768px) {
             .hero-title { font-size: 2rem; }
@@ -291,14 +282,9 @@
                 <div class="collapse sub-menu" id="menuCiudades"></div>
 
                 {% if session.get("user_id") %}
-                    {% if session.get("role") == "admin" %}
-                        <div class="list-group-item" onclick="location.href='/admin/dashboard'">
-                            <i class="bi bi-shield-lock me-2"></i>Panel admin
-                        </div>
-                    {% endif %}
-
-                    <div class="list-group-item" onclick="location.href='/seller/dashboard'">
-                        <i class="bi bi-shop me-2"></i>Mi panel
+                    <div class="list-group-item" onclick="location.href='{% if session.get('role') == 'admin' %}/admin/dashboard{% else %}/seller/dashboard{% endif %}'">
+                        <i class="bi bi-person-workspace me-2"></i>
+                        {% if session.get("role") == "admin" %}Administrador{% else %}Mi panel{% endif %}
                     </div>
 
                     <div class="list-group-item" onclick="location.href='/logout'">
@@ -348,11 +334,9 @@
                 <button onclick="limpiarBusqueda()" class="btn btn-outline-light">Limpiar búsqueda</button>
 
                 {% if session.get("user_id") %}
-                    {% if session.get("role") == "admin" %}
-                        <button onclick="location.href='/admin/dashboard'" class="btn btn-warning">Panel admin</button>
-                    {% endif %}
-
-                    <button onclick="location.href='/seller/dashboard'" class="btn btn-success">Mi panel</button>
+                    <button onclick="location.href='{% if session.get('role') == 'admin' %}/admin/dashboard{% else %}/seller/dashboard{% endif %}'" class="btn btn-success">
+                        {% if session.get("role") == "admin" %}Administrador{% else %}Mi panel{% endif %}
+                    </button>
                 {% else %}
                     <button onclick="abrirVender()" class="btn btn-success">Vender</button>
                 {% endif %}
