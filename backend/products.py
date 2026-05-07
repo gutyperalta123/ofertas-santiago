@@ -1,5 +1,5 @@
 # =========================================================
-# PRODUCTOS - INICIO + PANEL VENDEDOR
+# PRODUCTOS / PUBLICACIONES - INICIO + PANEL VENDEDOR
 # =========================================================
 
 import os
@@ -12,6 +12,16 @@ from database import get_db
 product_routes = Blueprint("products", __name__)
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+
+TIPOS_PUBLICACION_VALIDOS = {
+    "venta",
+    "servicio",
+    "salud",
+    "educacion",
+    "construccion",
+    "refrigeracion",
+    "otros"
+}
 
 
 def usuario_logueado():
@@ -73,6 +83,30 @@ def whatsapp_link_a_numero(link_o_numero):
     return limpiar_numero(link_o_numero)
 
 
+def normalizar_tipo_publicacion(tipo):
+    tipo = (tipo or "venta").strip().lower()
+    if tipo not in TIPOS_PUBLICACION_VALIDOS:
+        return "otros"
+    return tipo
+
+
+def precio_formulario_a_float(precio_raw):
+    precio_raw = (precio_raw or "").strip()
+
+    if not precio_raw:
+        return 0
+
+    precio_limpio = precio_raw.replace(".", "").replace(",", ".")
+
+    try:
+        precio = float(precio_limpio)
+        if precio < 0:
+            raise ValueError
+        return precio
+    except ValueError:
+        return None
+
+
 @product_routes.route("/api/products", methods=["GET"])
 def list_products():
     conn = get_db()
@@ -81,6 +115,8 @@ def list_products():
     rows = c.execute("""
         SELECT
             id,
+            tipo_publicacion,
+            rubro,
             titulo,
             descripcion,
             precio,
@@ -91,15 +127,23 @@ def list_products():
             instagram_link,
             facebook_link
         FROM products
-        ORDER BY precio ASC, id DESC
+        WHERE active = 1
+          AND sold = 0
+        ORDER BY
+            CASE WHEN precio IS NULL OR precio = 0 THEN 1 ELSE 0 END ASC,
+            precio ASC,
+            id DESC
     """).fetchall()
 
     conn.close()
 
     productos = []
+
     for row in rows:
         productos.append({
             "id": row["id"],
+            "tipo_publicacion": row["tipo_publicacion"] or "venta",
+            "rubro": row["rubro"] or "",
             "titulo": row["titulo"] or "",
             "descripcion": row["descripcion"] or "",
             "precio": float(row["precio"]) if row["precio"] is not None else 0,
@@ -124,6 +168,8 @@ def list_cities():
         FROM products
         WHERE ciudad IS NOT NULL
           AND TRIM(ciudad) <> ''
+          AND active = 1
+          AND sold = 0
         ORDER BY ciudad COLLATE NOCASE ASC
     """).fetchall()
 
@@ -139,35 +185,32 @@ def seller_dashboard():
         return redirect(url_for("auth.login"))
 
     if request.method == "POST":
+        tipo_publicacion = normalizar_tipo_publicacion(
+            request.form.get("tipo_publicacion", "venta")
+        )
+        rubro = request.form.get("rubro", "").strip()
         tienda_nombre = request.form.get("tienda_nombre", "").strip()
         titulo = request.form.get("titulo", "").strip()
         descripcion = request.form.get("descripcion", "").strip()
-
         precio_raw = request.form.get("precio", "").strip()
-        precio_limpio = precio_raw.replace(".", "").replace(",", ".")
-
         ciudad = request.form.get("ciudad", "").strip()
-
         whatsapp_numero = request.form.get("whatsapp_link", "").strip()
         instagram_link = request.form.get("instagram_link", "").strip()
         facebook_link = request.form.get("facebook_link", "").strip()
-
         imagen_file = request.files.get("imagen")
 
         if not tienda_nombre:
-            flash("Ingresá el nombre de tu tienda o empresa.", "danger")
+            flash("Ingresá el nombre de tu tienda, empresa o nombre público.", "danger")
             return redirect(url_for("products.seller_dashboard"))
 
-        if not titulo or not precio_limpio or not ciudad:
-            flash("Completá título, precio y ciudad.", "danger")
+        if not titulo or not ciudad:
+            flash("Completá título y ciudad.", "danger")
             return redirect(url_for("products.seller_dashboard"))
 
-        try:
-            precio = float(precio_limpio)
-            if precio <= 0:
-                raise ValueError
-        except ValueError:
-            flash("El precio debe ser un número válido mayor a 0.", "danger")
+        precio = precio_formulario_a_float(precio_raw)
+
+        if precio is None:
+            flash("El precio debe ser un número válido. Si no querés poner precio, dejalo vacío.", "danger")
             return redirect(url_for("products.seller_dashboard"))
 
         whatsapp_link = numero_a_whatsapp_link(whatsapp_numero)
@@ -191,6 +234,8 @@ def seller_dashboard():
         c.execute("""
             INSERT INTO products (
                 user_id,
+                tipo_publicacion,
+                rubro,
                 titulo,
                 descripcion,
                 precio,
@@ -199,11 +244,15 @@ def seller_dashboard():
                 ciudad,
                 whatsapp_link,
                 instagram_link,
-                facebook_link
+                facebook_link,
+                active,
+                sold
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             session["user_id"],
+            tipo_publicacion,
+            rubro,
             titulo,
             descripcion,
             precio,
@@ -212,7 +261,9 @@ def seller_dashboard():
             ciudad,
             whatsapp_link,
             instagram_link,
-            facebook_link
+            facebook_link,
+            1,
+            0
         ))
 
         conn.commit()
@@ -221,7 +272,7 @@ def seller_dashboard():
         session["tienda_nombre"] = tienda_nombre
         session["ciudad"] = ciudad
 
-        flash("Producto publicado correctamente.", "success")
+        flash("Publicación cargada correctamente.", "success")
         return redirect(url_for("products.seller_dashboard"))
 
     conn = get_db()
@@ -261,48 +312,45 @@ def edit_product(product_id):
 
     if not producto:
         conn.close()
-        flash("Producto no encontrado.", "danger")
+        flash("Publicación no encontrada.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
     if not puede_tocar_producto(producto, session["user_id"], session["role"]):
         conn.close()
-        flash("No podés editar este producto.", "danger")
+        flash("No podés editar esta publicación.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
     if request.method == "POST":
+        tipo_publicacion = normalizar_tipo_publicacion(
+            request.form.get("tipo_publicacion", "venta")
+        )
+        rubro = request.form.get("rubro", "").strip()
         tienda_nombre = request.form.get("tienda_nombre", "").strip()
         titulo = request.form.get("titulo", "").strip()
         descripcion = request.form.get("descripcion", "").strip()
-
         precio_raw = request.form.get("precio", "").strip()
-        precio_limpio = precio_raw.replace(".", "").replace(",", ".")
-
         ciudad = request.form.get("ciudad", "").strip()
-
         whatsapp_numero = request.form.get("whatsapp_link", "").strip()
         instagram_link = request.form.get("instagram_link", "").strip()
         facebook_link = request.form.get("facebook_link", "").strip()
-
         imagen_actual = request.form.get("imagen_actual", "").strip()
         imagen_file = request.files.get("imagen")
 
         if not tienda_nombre:
             conn.close()
-            flash("Ingresá el nombre de tu tienda o empresa.", "danger")
+            flash("Ingresá el nombre de tu tienda, empresa o nombre público.", "danger")
             return redirect(url_for("products.edit_product", product_id=product_id))
 
-        if not titulo or not precio_limpio or not ciudad:
+        if not titulo or not ciudad:
             conn.close()
-            flash("Completá título, precio y ciudad.", "danger")
+            flash("Completá título y ciudad.", "danger")
             return redirect(url_for("products.edit_product", product_id=product_id))
 
-        try:
-            precio = float(precio_limpio)
-            if precio <= 0:
-                raise ValueError
-        except ValueError:
+        precio = precio_formulario_a_float(precio_raw)
+
+        if precio is None:
             conn.close()
-            flash("El precio debe ser un número válido mayor a 0.", "danger")
+            flash("El precio debe ser un número válido. Si no querés poner precio, dejalo vacío.", "danger")
             return redirect(url_for("products.edit_product", product_id=product_id))
 
         whatsapp_link = numero_a_whatsapp_link(whatsapp_numero)
@@ -319,6 +367,8 @@ def edit_product(product_id):
         c.execute("""
             UPDATE products
             SET
+                tipo_publicacion = ?,
+                rubro = ?,
                 titulo = ?,
                 descripcion = ?,
                 precio = ?,
@@ -330,6 +380,8 @@ def edit_product(product_id):
                 facebook_link = ?
             WHERE id = ?
         """, (
+            tipo_publicacion,
+            rubro,
             titulo,
             descripcion,
             precio,
@@ -348,13 +400,14 @@ def edit_product(product_id):
                 SET tienda_nombre = ?, ciudad = ?
                 WHERE id = ?
             """, (tienda_nombre, ciudad, session["user_id"]))
+
             session["tienda_nombre"] = tienda_nombre
             session["ciudad"] = ciudad
 
         conn.commit()
         conn.close()
 
-        flash("Producto editado correctamente.", "success")
+        flash("Publicación editada correctamente.", "success")
 
         if session["role"] == "admin" and producto["user_id"] != session["user_id"]:
             return redirect(url_for("admin.admin_user_detail", user_id=producto["user_id"]))
@@ -363,6 +416,12 @@ def edit_product(product_id):
 
     producto_dict = dict(producto)
     producto_dict["whatsapp_numero"] = whatsapp_link_a_numero(producto["whatsapp_link"] or "")
+
+    if not producto_dict.get("tipo_publicacion"):
+        producto_dict["tipo_publicacion"] = "venta"
+
+    if producto_dict.get("rubro") is None:
+        producto_dict["rubro"] = ""
 
     conn.close()
     return render_template("edit_product.html", producto=producto_dict)
@@ -384,15 +443,14 @@ def delete_product(product_id):
 
     if not producto:
         conn.close()
-        flash("Producto no encontrado.", "danger")
+        flash("Publicación no encontrada.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
     if not puede_tocar_producto(producto, session["user_id"], session["role"]):
         conn.close()
-        flash("No podés eliminar este producto.", "danger")
+        flash("No podés eliminar esta publicación.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
-    # ELIMINACIÓN REAL
     c.execute("""
         DELETE FROM products
         WHERE id = ?
@@ -401,7 +459,7 @@ def delete_product(product_id):
     conn.commit()
     conn.close()
 
-    flash("Producto eliminado correctamente.", "success")
+    flash("Publicación eliminada correctamente.", "success")
 
     if session["role"] == "admin" and producto["user_id"] != session["user_id"]:
         return redirect(url_for("admin.admin_user_detail", user_id=producto["user_id"]))
@@ -425,15 +483,14 @@ def mark_as_sold(product_id):
 
     if not producto:
         conn.close()
-        flash("Producto no encontrado.", "danger")
+        flash("Publicación no encontrada.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
     if not puede_tocar_producto(producto, session["user_id"], session["role"]):
         conn.close()
-        flash("No podés marcar este producto como vendido.", "danger")
+        flash("No podés marcar esta publicación como vendida/finalizada.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
-    # si querés también podría borrarlo, pero lo dejamos como vendido
     c.execute("""
         UPDATE products
         SET sold = 1
@@ -443,7 +500,7 @@ def mark_as_sold(product_id):
     conn.commit()
     conn.close()
 
-    flash("Producto marcado como vendido.", "success")
+    flash("Publicación marcada como vendida/finalizada.", "success")
 
     if session["role"] == "admin" and producto["user_id"] != session["user_id"]:
         return redirect(url_for("admin.admin_user_detail", user_id=producto["user_id"]))
@@ -462,7 +519,7 @@ def bulk_action_products():
     owner_user_id = request.form.get("owner_user_id", "").strip()
 
     if not product_ids:
-        flash("Seleccioná al menos un producto.", "warning")
+        flash("Seleccioná al menos una publicación.", "warning")
         if return_to == "admin_detail" and owner_user_id:
             return redirect(url_for("admin.admin_user_detail", user_id=owner_user_id))
         return redirect(url_for("products.seller_dashboard"))
@@ -497,7 +554,6 @@ def bulk_action_products():
             continue
 
         if bulk_action == "delete":
-            # ELIMINACIÓN REAL
             c.execute("""
                 DELETE FROM products
                 WHERE id = ?
@@ -516,9 +572,9 @@ def bulk_action_products():
     conn.close()
 
     if bulk_action == "delete":
-        flash(f"Se eliminaron {afectados} productos.", "success")
+        flash(f"Se eliminaron {afectados} publicaciones.", "success")
     elif bulk_action == "sold":
-        flash(f"Se marcaron {afectados} productos como vendidos.", "success")
+        flash(f"Se marcaron {afectados} publicaciones como vendidas/finalizadas.", "success")
 
     if return_to == "admin_detail" and owner_user_id:
         return redirect(url_for("admin.admin_user_detail", user_id=owner_user_id))

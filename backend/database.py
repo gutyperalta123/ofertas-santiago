@@ -57,15 +57,17 @@ def init_db():
     add_column_if_missing(c, "users", "blocked INTEGER DEFAULT 0")
 
     # =========================
-    # PRODUCTS
+    # PRODUCTS / PUBLICACIONES
     # =========================
     c.execute("""
         CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
+            tipo_publicacion TEXT DEFAULT 'venta',
+            rubro TEXT,
             titulo TEXT NOT NULL,
             descripcion TEXT,
-            precio REAL NOT NULL,
+            precio REAL NOT NULL DEFAULT 0,
             imagen TEXT,
             tienda_nombre TEXT NOT NULL,
             ciudad TEXT NOT NULL,
@@ -80,6 +82,8 @@ def init_db():
     """)
 
     add_column_if_missing(c, "products", "user_id INTEGER")
+    add_column_if_missing(c, "products", "tipo_publicacion TEXT DEFAULT 'venta'")
+    add_column_if_missing(c, "products", "rubro TEXT")
     add_column_if_missing(c, "products", "descripcion TEXT")
     add_column_if_missing(c, "products", "imagen TEXT")
     add_column_if_missing(c, "products", "tienda_nombre TEXT")
@@ -131,6 +135,8 @@ def init_db():
         productos_iniciales = [
             (
                 admin_user["id"],
+                "venta",
+                "Motos",
                 "Moto 110cc usada",
                 "Moto económica en excelente estado.",
                 1850000,
@@ -145,6 +151,8 @@ def init_db():
             ),
             (
                 admin_user["id"],
+                "venta",
+                "Electrodomésticos",
                 "Heladera familiar",
                 "Gran capacidad y bajo consumo.",
                 980000,
@@ -159,6 +167,8 @@ def init_db():
             ),
             (
                 admin_user["id"],
+                "venta",
+                "Tecnología",
                 "Notebook 15 pulgadas",
                 "Ideal para estudio y trabajo.",
                 1250000,
@@ -170,57 +180,27 @@ def init_db():
                 "https://facebook.com/ofertassantiago",
                 1,
                 0
-            ),
-            (
-                admin_user["id"],
-                "Bicicleta rodado 29",
-                "Lista para salir a rodar.",
-                540000,
-                "https://images.unsplash.com/photo-1541625602330-2277a4c46182?auto=format&fit=crop&w=900&q=80",
-                admin_user["tienda_nombre"],
-                "Quimilí",
-                "https://wa.me/5493854000000",
-                "https://instagram.com/ofertassantiago",
-                "https://facebook.com/ofertassantiago",
-                1,
-                0
-            ),
-            (
-                admin_user["id"],
-                "Smart TV 50 pulgadas",
-                "Pantalla 4K con apps incluidas.",
-                860000,
-                "https://images.unsplash.com/photo-1593784991095-a205069470b6?auto=format&fit=crop&w=900&q=80",
-                admin_user["tienda_nombre"],
-                "Frías",
-                "https://wa.me/5493854000000",
-                "https://instagram.com/ofertassantiago",
-                "https://facebook.com/ofertassantiago",
-                1,
-                0
-            ),
-            (
-                admin_user["id"],
-                "Sillón 3 cuerpos",
-                "Cómodo, elegante y moderno.",
-                720000,
-                "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80",
-                admin_user["tienda_nombre"],
-                "Añatuya",
-                "https://wa.me/5493854000000",
-                "https://instagram.com/ofertassantiago",
-                "https://facebook.com/ofertassantiago",
-                1,
-                0
             )
         ]
 
         c.executemany("""
             INSERT INTO products (
-                user_id, titulo, descripcion, precio, imagen, tienda_nombre, ciudad,
-                whatsapp_link, instagram_link, facebook_link, active, sold
+                user_id,
+                tipo_publicacion,
+                rubro,
+                titulo,
+                descripcion,
+                precio,
+                imagen,
+                tienda_nombre,
+                ciudad,
+                whatsapp_link,
+                instagram_link,
+                facebook_link,
+                active,
+                sold
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, productos_iniciales)
 
         conn.commit()

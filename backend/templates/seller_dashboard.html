@@ -11,45 +11,63 @@
             color: white;
             font-family: Arial, Helvetica, sans-serif;
         }
+
         .box {
             background: #101b2f;
             border-radius: 22px;
             padding: 25px;
             border: 1px solid rgba(29,211,255,0.18);
         }
+
         .title {
             color: #1dd3ff;
             font-weight: 900;
         }
-        .form-control, textarea.form-control, .form-select {
+
+        .form-control,
+        textarea.form-control,
+        .form-select {
             background: #0a1322;
             color: white;
             border: 1px solid #294160;
         }
-        .form-control:focus, textarea.form-control:focus, .form-select:focus {
+
+        .form-control:focus,
+        textarea.form-control:focus,
+        .form-select:focus {
             background: #0a1322;
             color: white;
             border-color: #1dd3ff;
             box-shadow: none;
         }
+
+        .form-select option {
+            color: black;
+        }
+
         .table {
             color: white;
         }
+
         .table thead th {
             color: #1dd3ff;
         }
+
         .estado-vendido {
             color: #ffc107;
             font-weight: 700;
         }
+
         .estado-activo {
             color: #00ff88;
             font-weight: 700;
         }
+
         .estado-eliminado {
             color: #ff6b6b;
             font-weight: 700;
         }
+
         .preview-image {
             max-width: 120px;
             max-height: 90px;
@@ -57,9 +75,30 @@
             border-radius: 10px;
             border: 1px solid rgba(255,255,255,0.15);
         }
+
         .help-text {
             color: #9fb1c8;
             font-size: 0.92rem;
+        }
+
+        .tag-mini {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: rgba(29,211,255,0.12);
+            color: #8ceeff;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .tag-rubro {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: rgba(0,255,136,0.10);
+            color: #92ffcf;
+            font-size: 0.78rem;
+            font-weight: 700;
         }
     </style>
 </head>
@@ -91,38 +130,96 @@
         {% endwith %}
 
         <div class="box mb-4">
-            <h4 class="mb-3">Publicar producto</h4>
+            <h4 class="mb-3">Publicar producto o servicio</h4>
 
             <form method="POST" enctype="multipart/form-data">
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Nombre de la tienda o empresa</label>
-                        <input type="text" name="tienda_nombre" class="form-control" value="{{ user['tienda_nombre'] or '' }}" required>
+                        <label class="form-label">Tipo de publicación</label>
+                        <select name="tipo_publicacion" class="form-select" required>
+                            <option value="venta">Venta</option>
+                            <option value="servicio">Servicio</option>
+                            <option value="salud">Salud</option>
+                            <option value="educacion">Educación</option>
+                            <option value="construccion">Construcción / Albañilería</option>
+                            <option value="refrigeracion">Refrigeración</option>
+                            <option value="otros">Otros</option>
+                        </select>
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Título del producto</label>
-                        <input type="text" name="titulo" class="form-control" required>
+                        <label class="form-label">Rubro o categoría</label>
+                        <input
+                            type="text"
+                            name="rubro"
+                            class="form-control"
+                            placeholder="Ej: Aire acondicionado, albañilería, clases, celulares..."
+                        >
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Precio</label>
-                        <input type="text" name="precio" id="precio" class="form-control" inputmode="numeric" required>
+                        <label class="form-label">Nombre de la tienda, empresa o persona</label>
+                        <input
+                            type="text"
+                            name="tienda_nombre"
+                            class="form-control"
+                            value="{{ user['tienda_nombre'] or '' }}"
+                            required
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Título de la publicación</label>
+                        <input
+                            type="text"
+                            name="titulo"
+                            class="form-control"
+                            placeholder="Ej: Carga de gas para aire acondicionado"
+                            required
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Precio / costo</label>
+                        <input
+                            type="text"
+                            name="precio"
+                            id="precio"
+                            class="form-control"
+                            inputmode="numeric"
+                            placeholder="Opcional. Si lo dejás vacío aparece Consultar"
+                        >
                     </div>
 
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Ciudad o localidad</label>
-                        <input type="text" name="ciudad" class="form-control" value="{{ user['ciudad'] or '' }}" required>
+                        <input
+                            type="text"
+                            name="ciudad"
+                            class="form-control"
+                            value="{{ user['ciudad'] or '' }}"
+                            required
+                        >
                     </div>
 
                     <div class="col-md-12 mb-3">
-                        <label class="form-label">Descripción</label>
-                        <textarea name="descripcion" class="form-control" rows="3"></textarea>
+                        <label class="form-label">Descripción / reseña</label>
+                        <textarea
+                            name="descripcion"
+                            class="form-control"
+                            rows="3"
+                            placeholder="Contá qué vendés, qué servicio ofrecés, horarios, zona de trabajo o detalles importantes."
+                        ></textarea>
                     </div>
 
                     <div class="col-md-12 mb-3">
-                        <label class="form-label">Foto del producto</label>
-                        <input type="file" name="imagen" class="form-control" accept="image/png,image/jpeg,image/jpg,image/webp">
+                        <label class="form-label">Foto del producto o flyer del servicio</label>
+                        <input
+                            type="file"
+                            name="imagen"
+                            class="form-control"
+                            accept="image/png,image/jpeg,image/jpg,image/webp"
+                        >
                         <div class="help-text mt-2">
                             Podés elegir una foto desde la galería, archivos del teléfono o desde la computadora.
                         </div>
@@ -130,21 +227,38 @@
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label">WhatsApp</label>
-                        <input type="text" name="whatsapp_link" class="form-control" placeholder="Solo tu número">
+                        <input
+                            type="text"
+                            name="whatsapp_link"
+                            class="form-control"
+                            placeholder="Solo tu número"
+                        >
                     </div>
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Instagram link</label>
-                        <input type="text" name="instagram_link" class="form-control" placeholder="https://instagram.com/...">
+                        <input
+                            type="text"
+                            name="instagram_link"
+                            class="form-control"
+                            placeholder="https://instagram.com/..."
+                        >
                     </div>
 
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Facebook link</label>
-                        <input type="text" name="facebook_link" class="form-control" placeholder="https://facebook.com/...">
+                        <input
+                            type="text"
+                            name="facebook_link"
+                            class="form-control"
+                            placeholder="https://facebook.com/..."
+                        >
                     </div>
                 </div>
 
-                <button type="submit" class="btn btn-info text-dark fw-bold">Publicar producto</button>
+                <button type="submit" class="btn btn-info text-dark fw-bold">
+                    Publicar
+                </button>
             </form>
         </div>
 
@@ -158,13 +272,15 @@
                     <div class="col-md-4">
                         <select name="bulk_action" class="form-select" required>
                             <option value="">Acción masiva...</option>
-                            <option value="delete">Eliminar seleccionados</option>
-                            <option value="sold">Marcar seleccionados como vendidos</option>
+                            <option value="delete">Eliminar seleccionadas</option>
+                            <option value="sold">Marcar seleccionadas como vendidas/finalizadas</option>
                         </select>
                     </div>
 
                     <div class="col-md-4">
-                        <button type="submit" class="btn btn-warning w-100">Aplicar a seleccionados</button>
+                        <button type="submit" class="btn btn-warning w-100">
+                            Aplicar a seleccionadas
+                        </button>
                     </div>
 
                     <div class="col-md-4 d-flex align-items-center">
@@ -184,6 +300,8 @@
                                 <th></th>
                                 <th>ID</th>
                                 <th>Imagen</th>
+                                <th>Tipo</th>
+                                <th>Rubro</th>
                                 <th>Título</th>
                                 <th>Ciudad</th>
                                 <th>Precio</th>
@@ -191,47 +309,85 @@
                                 <th style="min-width: 260px;">Acciones</th>
                             </tr>
                         </thead>
+
                         <tbody>
                             {% for item in publicaciones %}
                                 <tr>
                                     <td>
                                         {% if item["active"] == 1 %}
-                                            <input type="checkbox" class="item-check-seller" name="product_ids[]" value="{{ item['id'] }}">
+                                            <input
+                                                type="checkbox"
+                                                class="item-check-seller"
+                                                name="product_ids[]"
+                                                value="{{ item['id'] }}"
+                                            >
                                         {% endif %}
                                     </td>
+
                                     <td>{{ item["id"] }}</td>
+
                                     <td>
                                         {% if item["imagen"] %}
-                                            <img src="{{ item['imagen'] }}" class="preview-image" alt="producto">
+                                            <img src="{{ item['imagen'] }}" class="preview-image" alt="publicación">
                                         {% else %}
                                             <span class="text-secondary">Sin imagen</span>
                                         {% endif %}
                                     </td>
+
+                                    <td>
+                                        <span class="tag-mini">
+                                            {{ item["tipo_publicacion"] or "venta" }}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        {% if item["rubro"] %}
+                                            <span class="tag-rubro">{{ item["rubro"] }}</span>
+                                        {% else %}
+                                            <span class="text-secondary">-</span>
+                                        {% endif %}
+                                    </td>
+
                                     <td>{{ item["titulo"] }}</td>
                                     <td>{{ item["ciudad"] }}</td>
-                                    <td>${{ "{:,.0f}".format(item["precio"]).replace(",", ".") }}</td>
+
+                                    <td>
+                                        {% if item["precio"] and item["precio"] > 0 %}
+                                            ${{ "{:,.0f}".format(item["precio"]).replace(",", ".") }}
+                                        {% else %}
+                                            Consultar
+                                        {% endif %}
+                                    </td>
+
                                     <td>
                                         {% if item["active"] == 0 %}
                                             <span class="estado-eliminado">Eliminado</span>
                                         {% elif item["sold"] == 1 %}
-                                            <span class="estado-vendido">Vendido</span>
+                                            <span class="estado-vendido">Vendido / finalizado</span>
                                         {% else %}
                                             <span class="estado-activo">Activo</span>
                                         {% endif %}
                                     </td>
+
                                     <td>
                                         <div class="d-flex flex-wrap gap-2">
                                             {% if item["active"] == 1 %}
-                                                <a href="/seller/product/{{ item['id'] }}/edit" class="btn btn-sm btn-outline-info">Editar</a>
+                                                <a href="/seller/product/{{ item['id'] }}/edit" class="btn btn-sm btn-outline-info">
+                                                    Editar
+                                                </a>
 
                                                 {% if item["sold"] == 0 %}
-                                                    <form method="POST" action="/seller/product/{{ item['id'] }}/sold" onsubmit="return confirm('¿Marcar este producto como vendido?')">
-                                                        <button type="submit" class="btn btn-sm btn-warning">Vendido</button>
+                                                    <form method="POST" action="/seller/product/{{ item['id'] }}/sold" onsubmit="return confirm('¿Marcar esta publicación como vendida/finalizada?')">
+                                                        <button type="submit" class="btn btn-sm btn-warning">
+                                                            Finalizar
+                                                        </button>
                                                     </form>
                                                 {% endif %}
 
-                                                <form method="POST" action="/seller/product/{{ item['id'] }}/delete" onsubmit="return confirm('¿Eliminar este producto?')">
-                                                    <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                                                <form method="POST" action="/seller/product/{{ item['id'] }}/delete" onsubmit="return confirm('¿Eliminar esta publicación?')">
+                                                    <button type="submit" class="btn btn-sm btn-danger">
+                                                        Eliminar
+                                                    </button>
                                                 </form>
                                             {% else %}
                                                 <span class="text-secondary">Sin acciones</span>
@@ -241,7 +397,7 @@
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td colspan="8">Todavía no publicaste productos.</td>
+                                    <td colspan="10">Todavía no publicaste nada.</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -267,6 +423,7 @@
         }
 
         const seleccionarTodosSeller = document.getElementById("seleccionarTodosSeller");
+
         if (seleccionarTodosSeller) {
             seleccionarTodosSeller.addEventListener("change", function () {
                 document.querySelectorAll(".item-check-seller").forEach(chk => {

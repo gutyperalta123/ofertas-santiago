@@ -179,10 +179,14 @@
             font-weight: 900;
         }
 
-        .tag-city, .tag-store {
+        .tag-city,
+        .tag-store,
+        .tag-type,
+        .tag-rubro {
             border-radius: 999px;
             padding: 6px 10px;
             font-size: 0.8rem;
+            font-weight: 700;
         }
 
         .tag-city {
@@ -193,6 +197,16 @@
         .tag-store {
             background: rgba(0,255,136,0.12);
             color: #92ffcf;
+        }
+
+        .tag-type {
+            background: rgba(255,193,7,0.14);
+            color: #ffd86b;
+        }
+
+        .tag-rubro {
+            background: rgba(255,255,255,0.08);
+            color: #e7eef7;
         }
 
         .social-buttons {
@@ -248,6 +262,7 @@
         }
     </style>
 </head>
+
 <body>
     <nav class="navbar navbar-dark fixed-top">
         <div class="container">
@@ -272,7 +287,7 @@
                 </div>
 
                 <div class="list-group-item" onclick="scrollAProductos()">
-                    <i class="bi bi-grid me-2"></i>Productos
+                    <i class="bi bi-grid me-2"></i>Publicaciones
                 </div>
 
                 <div class="list-group-item" data-bs-toggle="collapse" data-bs-target="#menuCiudades">
@@ -292,7 +307,7 @@
                     </div>
                 {% else %}
                     <div class="list-group-item" onclick="abrirVender()">
-                        <i class="bi bi-shop me-2"></i>Vender
+                        <i class="bi bi-megaphone me-2"></i>Publicar
                     </div>
                 {% endif %}
             </div>
@@ -303,7 +318,7 @@
         <div class="hero-section">
             <h1 class="hero-title">OFERTAS SANTIAGO</h1>
             <p class="hero-subtitle">
-                Encontrá productos, negocios y ofertas por ciudad.
+                Encontrá productos, servicios, salud, educación, construcción, refrigeración y negocios por ciudad.
             </p>
 
             <div class="row g-3 justify-content-center align-items-center">
@@ -312,13 +327,26 @@
                         type="text"
                         id="buscador"
                         class="form-control search-lg"
-                        placeholder="Buscar por producto, ciudad o tienda..."
+                        placeholder="Buscar productos, servicios, rubros, ciudades o tiendas..."
                     >
                 </div>
 
                 <div class="col-12 col-lg-3">
                     <select id="filtroCiudad" class="form-select filter-select">
                         <option value="">Todas las ciudades</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-lg-2">
+                    <select id="filtroTipo" class="form-select filter-select">
+                        <option value="">Todos</option>
+                        <option value="venta">Venta</option>
+                        <option value="servicio">Servicio</option>
+                        <option value="salud">Salud</option>
+                        <option value="educacion">Educación</option>
+                        <option value="construccion">Construcción</option>
+                        <option value="refrigeracion">Refrigeración</option>
+                        <option value="otros">Otros</option>
                     </select>
                 </div>
 
@@ -330,7 +358,7 @@
             </div>
 
             <div class="text-center mt-4 hero-actions d-flex flex-wrap gap-2 justify-content-center">
-                <button onclick="scrollAProductos()" class="btn btn-info text-dark">Ver productos</button>
+                <button onclick="scrollAProductos()" class="btn btn-info text-dark">Ver publicaciones</button>
                 <button onclick="limpiarBusqueda()" class="btn btn-outline-light">Limpiar búsqueda</button>
 
                 {% if session.get("user_id") %}
@@ -338,14 +366,16 @@
                         {% if session.get("role") == "admin" %}Administrador{% else %}Mi panel{% endif %}
                     </button>
                 {% else %}
-                    <button onclick="abrirVender()" class="btn btn-success">Vender</button>
+                    <button onclick="abrirVender()" class="btn btn-success">Publicar</button>
                 {% endif %}
             </div>
         </div>
 
         <div id="productosSection">
             <h2 class="section-title">Publicaciones</h2>
-            <p class="section-subtitle">Productos activos ordenados por precio.</p>
+            <p class="section-subtitle">
+                Productos, servicios y rubros locales activos.
+            </p>
             <div id="contenedor" class="row"></div>
         </div>
 
@@ -356,11 +386,14 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content custom-modal-content">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title">Ingresar para vender</h5>
+                    <h5 class="modal-title">Ingresar para publicar</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
+
                 <div class="modal-body">
-                    <p class="mb-3">Para publicar productos primero tenés que iniciar sesión o registrarte.</p>
+                    <p class="mb-3">
+                        Para publicar productos o servicios primero tenés que iniciar sesión o registrarte.
+                    </p>
 
                     <div class="d-grid gap-2">
                         <a href="/login" class="btn btn-info text-dark fw-bold">Iniciar sesión</a>
@@ -378,6 +411,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
         let productosBase = [];
         let ciudadesBase = [];
@@ -392,10 +426,6 @@
                 .replace(/'/g, "&#039;");
         }
 
-        function ordenarPorPrecio(lista) {
-            return [...lista].sort((a, b) => Number(a.precio) - Number(b.precio));
-        }
-
         function normalizarTexto(texto) {
             return (texto || "")
                 .toString()
@@ -404,9 +434,42 @@
                 .replace(/[\u0300-\u036f]/g, "");
         }
 
+        function ordenarPorPrecio(lista) {
+            return [...lista].sort((a, b) => {
+                const precioA = Number(a.precio) > 0 ? Number(a.precio) : Number.POSITIVE_INFINITY;
+                const precioB = Number(b.precio) > 0 ? Number(b.precio) : Number.POSITIVE_INFINITY;
+                return precioA - precioB;
+            });
+        }
+
+        function nombreTipo(tipo) {
+            const mapa = {
+                venta: "Venta",
+                servicio: "Servicio",
+                salud: "Salud",
+                educacion: "Educación",
+                construccion: "Construcción",
+                refrigeracion: "Refrigeración",
+                otros: "Otros"
+            };
+
+            return mapa[tipo] || "Venta";
+        }
+
+        function precioTexto(precio) {
+            const numero = Number(precio);
+
+            if (!numero || numero <= 0) {
+                return "Consultar";
+            }
+
+            return "$" + numero.toLocaleString("es-AR");
+        }
+
         async function cargarProductos() {
             const res = await fetch("/api/products");
             const data = await res.json();
+
             productosBase = ordenarPorPrecio(data);
             dibujar(productosBase);
             cargarOpcionesFiltroCiudad(productosBase);
@@ -415,17 +478,19 @@
         async function cargarCiudades() {
             const res = await fetch("/api/cities");
             const data = await res.json();
+
             ciudadesBase = data || [];
             dibujarCiudades(ciudadesBase);
         }
 
         function cargarOpcionesFiltroCiudad(productos) {
             const select = document.getElementById("filtroCiudad");
+
             const ciudadesUnicas = [...new Set(
                 productos
                     .map(p => (p.ciudad || "").trim())
                     .filter(c => c !== "")
-            )].sort((a, b) => a.localeCompare(b, 'es'));
+            )].sort((a, b) => a.localeCompare(b, "es"));
 
             select.innerHTML = `<option value="">Todas las ciudades</option>`;
 
@@ -461,6 +526,7 @@
                     <div class="col-12">
                         <div class="empty-box">
                             <h4 class="mb-2">No hay publicaciones</h4>
+                            <p class="mb-0">Probá buscar otra ciudad, rubro o tipo de publicación.</p>
                         </div>
                     </div>
                 `;
@@ -484,6 +550,10 @@
                     ? `<a href="${escaparHtml(producto.facebook_link)}" target="_blank" class="btn-social btn-facebook" onclick="event.stopPropagation()"><i class="bi bi-facebook"></i> Facebook</a>`
                     : "";
 
+                const rubro = producto.rubro
+                    ? `<span class="tag-rubro">${escaparHtml(producto.rubro)}</span>`
+                    : "";
+
                 contenedor.innerHTML += `
                     <div class="col-12 col-md-6 col-lg-4 mb-4">
                         <div class="card card-oferta h-100">
@@ -493,12 +563,14 @@
 
                             <div class="card-body d-flex flex-column">
                                 <div class="d-flex gap-2 flex-wrap mb-2">
+                                    <span class="tag-type">${escaparHtml(nombreTipo(producto.tipo_publicacion))}</span>
+                                    ${rubro}
                                     <span class="tag-store">${escaparHtml(producto.tienda_nombre)}</span>
                                     <span class="tag-city">${escaparHtml(producto.ciudad)}</span>
                                 </div>
 
                                 <h5 class="fw-bold">${escaparHtml(producto.titulo)}</h5>
-                                <p class="price mb-2">$${Number(producto.precio).toLocaleString('es-AR')}</p>
+                                <p class="price mb-2">${precioTexto(producto.precio)}</p>
                                 <p class="text-secondary small mb-3">${escaparHtml(producto.descripcion || "")}</p>
 
                                 <div class="social-buttons mt-auto">
@@ -520,23 +592,34 @@
         function aplicarFiltros() {
             const texto = normalizarTexto(document.getElementById("buscador").value.trim());
             const ciudadSeleccionada = normalizarTexto(document.getElementById("filtroCiudad").value);
+            const tipoSeleccionado = normalizarTexto(document.getElementById("filtroTipo").value);
 
             let filtrados = productosBase.filter(item => {
                 const titulo = normalizarTexto(item.titulo);
                 const tienda = normalizarTexto(item.tienda_nombre);
                 const ciudad = normalizarTexto(item.ciudad);
+                const descripcion = normalizarTexto(item.descripcion);
+                const tipo = normalizarTexto(item.tipo_publicacion);
+                const rubro = normalizarTexto(item.rubro);
 
                 const coincideTexto =
                     !texto ||
                     titulo.includes(texto) ||
                     tienda.includes(texto) ||
-                    ciudad.includes(texto);
+                    ciudad.includes(texto) ||
+                    descripcion.includes(texto) ||
+                    tipo.includes(texto) ||
+                    rubro.includes(texto);
 
                 const coincideCiudad =
                     !ciudadSeleccionada ||
                     ciudad === ciudadSeleccionada;
 
-                return coincideTexto && coincideCiudad;
+                const coincideTipo =
+                    !tipoSeleccionado ||
+                    tipo === tipoSeleccionado;
+
+                return coincideTexto && coincideCiudad && coincideTipo;
             });
 
             dibujar(ordenarPorPrecio(filtrados));
@@ -551,6 +634,7 @@
         function limpiarBusqueda() {
             document.getElementById("buscador").value = "";
             document.getElementById("filtroCiudad").value = "";
+            document.getElementById("filtroTipo").value = "";
             dibujar(ordenarPorPrecio(productosBase));
         }
 
@@ -585,12 +669,17 @@
                     <h5 class="modal-title">${escaparHtml(producto.titulo)}</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
+
                 <div class="modal-body">
                     <img src="${escaparHtml(imagen)}" class="img-fluid rounded-4 mb-3" alt="${escaparHtml(producto.titulo)}" style="object-fit: contain; background: white;">
-                    <p class="mb-2"><strong>Tienda:</strong> ${escaparHtml(producto.tienda_nombre)}</p>
+
+                    <p class="mb-2"><strong>Tipo:</strong> ${escaparHtml(nombreTipo(producto.tipo_publicacion))}</p>
+                    <p class="mb-2"><strong>Rubro:</strong> ${escaparHtml(producto.rubro || "-")}</p>
+                    <p class="mb-2"><strong>Tienda / empresa / persona:</strong> ${escaparHtml(producto.tienda_nombre)}</p>
                     <p class="mb-2"><strong>Ciudad:</strong> ${escaparHtml(producto.ciudad)}</p>
-                    <p class="mb-2"><strong>Precio:</strong> $${Number(producto.precio).toLocaleString('es-AR')}</p>
+                    <p class="mb-2"><strong>Precio:</strong> ${precioTexto(producto.precio)}</p>
                     <p class="mb-3"><strong>Descripción:</strong> ${escaparHtml(producto.descripcion || "")}</p>
+
                     <div class="social-buttons">
                         ${whatsapp}
                         ${instagram}
@@ -615,6 +704,7 @@
             });
 
             document.getElementById("filtroCiudad").addEventListener("change", aplicarFiltros);
+            document.getElementById("filtroTipo").addEventListener("change", aplicarFiltros);
 
             cargarProductos();
             cargarCiudades();
