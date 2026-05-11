@@ -1,7 +1,3 @@
-# =========================================================
-# PRODUCTOS / PUBLICACIONES - INICIO + PANEL VENDEDOR
-# =========================================================
-
 import os
 import re
 import uuid
@@ -12,16 +8,6 @@ from database import get_db
 product_routes = Blueprint("products", __name__)
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
-
-TIPOS_PUBLICACION_VALIDOS = {
-    "venta",
-    "servicio",
-    "salud",
-    "educacion",
-    "construccion",
-    "refrigeracion",
-    "otros"
-}
 
 
 def usuario_logueado():
@@ -66,33 +52,21 @@ def limpiar_numero(numero):
 
 def numero_a_whatsapp_link(numero):
     numero_limpio = limpiar_numero(numero)
-
     if not numero_limpio:
         return ""
-
     return f"https://wa.me/{numero_limpio}"
 
 
 def whatsapp_link_a_numero(link_o_numero):
     if not link_o_numero:
         return ""
-
     if "wa.me/" in link_o_numero:
         return link_o_numero.split("wa.me/")[-1].strip()
-
     return limpiar_numero(link_o_numero)
-
-
-def normalizar_tipo_publicacion(tipo):
-    tipo = (tipo or "venta").strip().lower()
-    if tipo not in TIPOS_PUBLICACION_VALIDOS:
-        return "otros"
-    return tipo
 
 
 def precio_formulario_a_float(precio_raw):
     precio_raw = (precio_raw or "").strip()
-
     if not precio_raw:
         return 0
 
@@ -107,6 +81,59 @@ def precio_formulario_a_float(precio_raw):
         return None
 
 
+def categoria_existe(slug):
+    conn = get_db()
+    c = conn.cursor()
+    categoria = c.execute("""
+        SELECT slug
+        FROM categories
+        WHERE slug = ?
+          AND active = 1
+    """, (slug,)).fetchone()
+    conn.close()
+    return categoria is not None
+
+
+def obtener_categorias_activas():
+    conn = get_db()
+    c = conn.cursor()
+    categorias = c.execute("""
+        SELECT *
+        FROM categories
+        WHERE active = 1
+        ORDER BY nombre COLLATE NOCASE ASC
+    """).fetchall()
+    conn.close()
+    return categorias
+
+
+def normalizar_tipo_publicacion(tipo):
+    tipo = (tipo or "venta").strip().lower()
+    if categoria_existe(tipo):
+        return tipo
+    return "otros"
+
+
+@product_routes.route("/api/categories", methods=["GET"])
+def api_categories():
+    conn = get_db()
+    c = conn.cursor()
+
+    rows = c.execute("""
+        SELECT nombre, slug
+        FROM categories
+        WHERE active = 1
+        ORDER BY nombre COLLATE NOCASE ASC
+    """).fetchall()
+
+    conn.close()
+
+    return jsonify([
+        {"nombre": row["nombre"], "slug": row["slug"]}
+        for row in rows
+    ])
+
+
 @product_routes.route("/api/products", methods=["GET"])
 def list_products():
     conn = get_db()
@@ -114,25 +141,27 @@ def list_products():
 
     rows = c.execute("""
         SELECT
-            id,
-            tipo_publicacion,
-            rubro,
-            titulo,
-            descripcion,
-            precio,
-            imagen,
-            tienda_nombre,
-            ciudad,
-            whatsapp_link,
-            instagram_link,
-            facebook_link
-        FROM products
-        WHERE active = 1
-          AND sold = 0
+            p.id,
+            p.tipo_publicacion,
+            p.rubro,
+            p.titulo,
+            p.descripcion,
+            p.precio,
+            p.imagen,
+            p.tienda_nombre,
+            p.ciudad,
+            p.whatsapp_link,
+            p.instagram_link,
+            p.facebook_link,
+            COALESCE(c.nombre, p.tipo_publicacion) AS categoria_nombre
+        FROM products p
+        LEFT JOIN categories c ON c.slug = p.tipo_publicacion
+        WHERE p.active = 1
+          AND p.sold = 0
         ORDER BY
-            CASE WHEN precio IS NULL OR precio = 0 THEN 1 ELSE 0 END ASC,
-            precio ASC,
-            id DESC
+            CASE WHEN p.precio IS NULL OR p.precio = 0 THEN 1 ELSE 0 END ASC,
+            p.precio ASC,
+            p.id DESC
     """).fetchall()
 
     conn.close()
@@ -143,6 +172,7 @@ def list_products():
         productos.append({
             "id": row["id"],
             "tipo_publicacion": row["tipo_publicacion"] or "venta",
+            "categoria_nombre": row["categoria_nombre"] or "Venta",
             "rubro": row["rubro"] or "",
             "titulo": row["titulo"] or "",
             "descripcion": row["descripcion"] or "",
@@ -175,8 +205,7 @@ def list_cities():
 
     conn.close()
 
-    ciudades = [row["ciudad"] for row in rows]
-    return jsonify(ciudades)
+    return jsonify([row["ciudad"] for row in rows])
 
 
 @product_routes.route("/seller/dashboard", methods=["GET", "POST"])
@@ -185,9 +214,7 @@ def seller_dashboard():
         return redirect(url_for("auth.login"))
 
     if request.method == "POST":
-        tipo_publicacion = normalizar_tipo_publicacion(
-            request.form.get("tipo_publicacion", "venta")
-        )
+        tipo_publicacion = normalizar_tipo_publicacion(request.form.get("tipo_publicacion", "venta"))
         rubro = request.form.get("rubro", "").strip()
         tienda_nombre = request.form.get("tienda_nombre", "").strip()
         titulo = request.form.get("titulo", "").strip()
@@ -210,7 +237,7 @@ def seller_dashboard():
         precio = precio_formulario_a_float(precio_raw)
 
         if precio is None:
-            flash("El precio debe ser un número válido. Si no querés poner precio, dejalo vacío.", "danger")
+            flash("El precio debe ser válido. Si no querés poner precio, dejalo vacío.", "danger")
             return redirect(url_for("products.seller_dashboard"))
 
         whatsapp_link = numero_a_whatsapp_link(whatsapp_numero)
@@ -233,44 +260,19 @@ def seller_dashboard():
 
         c.execute("""
             INSERT INTO products (
-                user_id,
-                tipo_publicacion,
-                rubro,
-                titulo,
-                descripcion,
-                precio,
-                imagen,
-                tienda_nombre,
-                ciudad,
-                whatsapp_link,
-                instagram_link,
-                facebook_link,
-                active,
-                sold
+                user_id, tipo_publicacion, rubro, titulo, descripcion, precio,
+                imagen, tienda_nombre, ciudad, whatsapp_link, instagram_link,
+                facebook_link, active, sold
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            session["user_id"],
-            tipo_publicacion,
-            rubro,
-            titulo,
-            descripcion,
-            precio,
-            imagen,
-            tienda_nombre,
-            ciudad,
-            whatsapp_link,
-            instagram_link,
-            facebook_link,
-            1,
-            0
+            session["user_id"], tipo_publicacion, rubro, titulo, descripcion,
+            precio, imagen, tienda_nombre, ciudad, whatsapp_link,
+            instagram_link, facebook_link, 1, 0
         ))
 
         conn.commit()
         conn.close()
-
-        session["tienda_nombre"] = tienda_nombre
-        session["ciudad"] = ciudad
 
         flash("Publicación cargada correctamente.", "success")
         return redirect(url_for("products.seller_dashboard"))
@@ -293,7 +295,14 @@ def seller_dashboard():
 
     conn.close()
 
-    return render_template("seller_dashboard.html", publicaciones=publicaciones, user=user)
+    categorias = obtener_categorias_activas()
+
+    return render_template(
+        "seller_dashboard.html",
+        publicaciones=publicaciones,
+        user=user,
+        categorias=categorias
+    )
 
 
 @product_routes.route("/seller/product/<int:product_id>/edit", methods=["GET", "POST"])
@@ -321,9 +330,7 @@ def edit_product(product_id):
         return redirect(url_for("products.seller_dashboard"))
 
     if request.method == "POST":
-        tipo_publicacion = normalizar_tipo_publicacion(
-            request.form.get("tipo_publicacion", "venta")
-        )
+        tipo_publicacion = normalizar_tipo_publicacion(request.form.get("tipo_publicacion", "venta"))
         rubro = request.form.get("rubro", "").strip()
         tienda_nombre = request.form.get("tienda_nombre", "").strip()
         titulo = request.form.get("titulo", "").strip()
@@ -350,7 +357,7 @@ def edit_product(product_id):
 
         if precio is None:
             conn.close()
-            flash("El precio debe ser un número válido. Si no querés poner precio, dejalo vacío.", "danger")
+            flash("El precio debe ser válido. Si no querés poner precio, dejalo vacío.", "danger")
             return redirect(url_for("products.edit_product", product_id=product_id))
 
         whatsapp_link = numero_a_whatsapp_link(whatsapp_numero)
@@ -394,16 +401,6 @@ def edit_product(product_id):
             product_id
         ))
 
-        if producto["user_id"] == session["user_id"]:
-            c.execute("""
-                UPDATE users
-                SET tienda_nombre = ?, ciudad = ?
-                WHERE id = ?
-            """, (tienda_nombre, ciudad, session["user_id"]))
-
-            session["tienda_nombre"] = tienda_nombre
-            session["ciudad"] = ciudad
-
         conn.commit()
         conn.close()
 
@@ -417,14 +414,15 @@ def edit_product(product_id):
     producto_dict = dict(producto)
     producto_dict["whatsapp_numero"] = whatsapp_link_a_numero(producto["whatsapp_link"] or "")
 
-    if not producto_dict.get("tipo_publicacion"):
-        producto_dict["tipo_publicacion"] = "venta"
-
-    if producto_dict.get("rubro") is None:
-        producto_dict["rubro"] = ""
-
     conn.close()
-    return render_template("edit_product.html", producto=producto_dict)
+
+    categorias = obtener_categorias_activas()
+
+    return render_template(
+        "edit_product.html",
+        producto=producto_dict,
+        categorias=categorias
+    )
 
 
 @product_routes.route("/seller/product/<int:product_id>/delete", methods=["POST"])
@@ -435,11 +433,7 @@ def delete_product(product_id):
     conn = get_db()
     c = conn.cursor()
 
-    producto = c.execute("""
-        SELECT *
-        FROM products
-        WHERE id = ?
-    """, (product_id,)).fetchone()
+    producto = c.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
 
     if not producto:
         conn.close()
@@ -451,10 +445,7 @@ def delete_product(product_id):
         flash("No podés eliminar esta publicación.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
-    c.execute("""
-        DELETE FROM products
-        WHERE id = ?
-    """, (product_id,))
+    c.execute("DELETE FROM products WHERE id = ?", (product_id,))
 
     conn.commit()
     conn.close()
@@ -475,11 +466,7 @@ def mark_as_sold(product_id):
     conn = get_db()
     c = conn.cursor()
 
-    producto = c.execute("""
-        SELECT *
-        FROM products
-        WHERE id = ?
-    """, (product_id,)).fetchone()
+    producto = c.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
 
     if not producto:
         conn.close()
@@ -488,19 +475,15 @@ def mark_as_sold(product_id):
 
     if not puede_tocar_producto(producto, session["user_id"], session["role"]):
         conn.close()
-        flash("No podés marcar esta publicación como vendida/finalizada.", "danger")
+        flash("No podés finalizar esta publicación.", "danger")
         return redirect(url_for("products.seller_dashboard"))
 
-    c.execute("""
-        UPDATE products
-        SET sold = 1
-        WHERE id = ?
-    """, (product_id,))
+    c.execute("UPDATE products SET sold = 1 WHERE id = ?", (product_id,))
 
     conn.commit()
     conn.close()
 
-    flash("Publicación marcada como vendida/finalizada.", "success")
+    flash("Publicación finalizada.", "success")
 
     if session["role"] == "admin" and producto["user_id"] != session["user_id"]:
         return redirect(url_for("admin.admin_user_detail", user_id=producto["user_id"]))
@@ -518,34 +501,13 @@ def bulk_action_products():
     return_to = request.form.get("return_to", "").strip()
     owner_user_id = request.form.get("owner_user_id", "").strip()
 
-    if not product_ids:
-        flash("Seleccioná al menos una publicación.", "warning")
-        if return_to == "admin_detail" and owner_user_id:
-            return redirect(url_for("admin.admin_user_detail", user_id=owner_user_id))
-        return redirect(url_for("products.seller_dashboard"))
-
-    if bulk_action not in ["delete", "sold"]:
-        flash("Acción masiva no válida.", "danger")
-        if return_to == "admin_detail" and owner_user_id:
-            return redirect(url_for("admin.admin_user_detail", user_id=owner_user_id))
-        return redirect(url_for("products.seller_dashboard"))
-
     conn = get_db()
     c = conn.cursor()
 
     afectados = 0
 
     for pid in product_ids:
-        try:
-            pid_int = int(pid)
-        except ValueError:
-            continue
-
-        producto = c.execute("""
-            SELECT *
-            FROM products
-            WHERE id = ?
-        """, (pid_int,)).fetchone()
+        producto = c.execute("SELECT * FROM products WHERE id = ?", (pid,)).fetchone()
 
         if not producto:
             continue
@@ -554,27 +516,17 @@ def bulk_action_products():
             continue
 
         if bulk_action == "delete":
-            c.execute("""
-                DELETE FROM products
-                WHERE id = ?
-            """, (pid_int,))
+            c.execute("DELETE FROM products WHERE id = ?", (pid,))
             afectados += 1
 
         elif bulk_action == "sold":
-            c.execute("""
-                UPDATE products
-                SET sold = 1
-                WHERE id = ?
-            """, (pid_int,))
+            c.execute("UPDATE products SET sold = 1 WHERE id = ?", (pid,))
             afectados += 1
 
     conn.commit()
     conn.close()
 
-    if bulk_action == "delete":
-        flash(f"Se eliminaron {afectados} publicaciones.", "success")
-    elif bulk_action == "sold":
-        flash(f"Se marcaron {afectados} publicaciones como vendidas/finalizadas.", "success")
+    flash(f"Se modificaron {afectados} publicaciones.", "success")
 
     if return_to == "admin_detail" and owner_user_id:
         return redirect(url_for("admin.admin_user_detail", user_id=owner_user_id))

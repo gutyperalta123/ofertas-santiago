@@ -318,7 +318,7 @@
         <div class="hero-section">
             <h1 class="hero-title">OFERTAS SANTIAGO</h1>
             <p class="hero-subtitle">
-                Encontrá productos, servicios, salud, educación, construcción, refrigeración y negocios por ciudad.
+                Encontrá productos, servicios, oficios, negocios y oportunidades por ciudad.
             </p>
 
             <div class="row g-3 justify-content-center align-items-center">
@@ -340,13 +340,6 @@
                 <div class="col-12 col-lg-2">
                     <select id="filtroTipo" class="form-select filter-select">
                         <option value="">Todos</option>
-                        <option value="venta">Venta</option>
-                        <option value="servicio">Servicio</option>
-                        <option value="salud">Salud</option>
-                        <option value="educacion">Educación</option>
-                        <option value="construccion">Construcción</option>
-                        <option value="refrigeracion">Refrigeración</option>
-                        <option value="otros">Otros</option>
                     </select>
                 </div>
 
@@ -415,6 +408,7 @@
     <script>
         let productosBase = [];
         let ciudadesBase = [];
+        let categoriasBase = [];
 
         function escaparHtml(texto) {
             if (texto === null || texto === undefined) return "";
@@ -442,20 +436,6 @@
             });
         }
 
-        function nombreTipo(tipo) {
-            const mapa = {
-                venta: "Venta",
-                servicio: "Servicio",
-                salud: "Salud",
-                educacion: "Educación",
-                construccion: "Construcción",
-                refrigeracion: "Refrigeración",
-                otros: "Otros"
-            };
-
-            return mapa[tipo] || "Venta";
-        }
-
         function precioTexto(precio) {
             const numero = Number(precio);
 
@@ -464,6 +444,24 @@
             }
 
             return "$" + numero.toLocaleString("es-AR");
+        }
+
+        async function cargarCategorias() {
+            const res = await fetch("/api/categories");
+            const data = await res.json();
+
+            categoriasBase = data || [];
+
+            const select = document.getElementById("filtroTipo");
+            select.innerHTML = `<option value="">Todos</option>`;
+
+            categoriasBase.forEach(cat => {
+                select.innerHTML += `
+                    <option value="${escaparHtml(cat.slug)}">
+                        ${escaparHtml(cat.nombre)}
+                    </option>
+                `;
+            });
         }
 
         async function cargarProductos() {
@@ -563,7 +561,7 @@
 
                             <div class="card-body d-flex flex-column">
                                 <div class="d-flex gap-2 flex-wrap mb-2">
-                                    <span class="tag-type">${escaparHtml(nombreTipo(producto.tipo_publicacion))}</span>
+                                    <span class="tag-type">${escaparHtml(producto.categoria_nombre || producto.tipo_publicacion)}</span>
                                     ${rubro}
                                     <span class="tag-store">${escaparHtml(producto.tienda_nombre)}</span>
                                     <span class="tag-city">${escaparHtml(producto.ciudad)}</span>
@@ -600,6 +598,7 @@
                 const ciudad = normalizarTexto(item.ciudad);
                 const descripcion = normalizarTexto(item.descripcion);
                 const tipo = normalizarTexto(item.tipo_publicacion);
+                const categoriaNombre = normalizarTexto(item.categoria_nombre);
                 const rubro = normalizarTexto(item.rubro);
 
                 const coincideTexto =
@@ -609,6 +608,7 @@
                     ciudad.includes(texto) ||
                     descripcion.includes(texto) ||
                     tipo.includes(texto) ||
+                    categoriaNombre.includes(texto) ||
                     rubro.includes(texto);
 
                 const coincideCiudad =
@@ -673,7 +673,7 @@
                 <div class="modal-body">
                     <img src="${escaparHtml(imagen)}" class="img-fluid rounded-4 mb-3" alt="${escaparHtml(producto.titulo)}" style="object-fit: contain; background: white;">
 
-                    <p class="mb-2"><strong>Tipo:</strong> ${escaparHtml(nombreTipo(producto.tipo_publicacion))}</p>
+                    <p class="mb-2"><strong>Tipo:</strong> ${escaparHtml(producto.categoria_nombre || producto.tipo_publicacion)}</p>
                     <p class="mb-2"><strong>Rubro:</strong> ${escaparHtml(producto.rubro || "-")}</p>
                     <p class="mb-2"><strong>Tienda / empresa / persona:</strong> ${escaparHtml(producto.tienda_nombre)}</p>
                     <p class="mb-2"><strong>Ciudad:</strong> ${escaparHtml(producto.ciudad)}</p>
@@ -692,7 +692,7 @@
             modal.show();
         }
 
-        document.addEventListener("DOMContentLoaded", () => {
+        document.addEventListener("DOMContentLoaded", async () => {
             const buscador = document.getElementById("buscador");
 
             buscador.addEventListener("input", aplicarFiltros);
@@ -706,8 +706,9 @@
             document.getElementById("filtroCiudad").addEventListener("change", aplicarFiltros);
             document.getElementById("filtroTipo").addEventListener("change", aplicarFiltros);
 
-            cargarProductos();
-            cargarCiudades();
+            await cargarCategorias();
+            await cargarProductos();
+            await cargarCiudades();
         });
     </script>
 </body>

@@ -79,38 +79,19 @@
                         <label class="form-label">Tipo de publicación</label>
 
                         <select name="tipo_publicacion" class="form-select" required>
-                            <option value="venta" {% if producto['tipo_publicacion'] == 'venta' %}selected{% endif %}>
-                                Venta
-                            </option>
-
-                            <option value="servicio" {% if producto['tipo_publicacion'] == 'servicio' %}selected{% endif %}>
-                                Servicio
-                            </option>
-
-                            <option value="salud" {% if producto['tipo_publicacion'] == 'salud' %}selected{% endif %}>
-                                Salud
-                            </option>
-
-                            <option value="educacion" {% if producto['tipo_publicacion'] == 'educacion' %}selected{% endif %}>
-                                Educación
-                            </option>
-
-                            <option value="construccion" {% if producto['tipo_publicacion'] == 'construccion' %}selected{% endif %}>
-                                Construcción / Albañilería
-                            </option>
-
-                            <option value="refrigeracion" {% if producto['tipo_publicacion'] == 'refrigeracion' %}selected{% endif %}>
-                                Refrigeración
-                            </option>
-
-                            <option value="otros" {% if producto['tipo_publicacion'] == 'otros' %}selected{% endif %}>
-                                Otros
-                            </option>
+                            {% for cat in categorias %}
+                                <option
+                                    value="{{ cat['slug'] }}"
+                                    {% if producto['tipo_publicacion'] == cat['slug'] %}selected{% endif %}
+                                >
+                                    {{ cat["nombre"] }}
+                                </option>
+                            {% endfor %}
                         </select>
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Rubro o categoría</label>
+                        <label class="form-label">Rubro o categoría secundaria</label>
                         <input
                             type="text"
                             name="rubro"

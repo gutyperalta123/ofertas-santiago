@@ -5,52 +5,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel administrador | OFERTAS SANTIAGO</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
     <style>
         body {
             background: linear-gradient(180deg, #050a14 0%, #0b1424 100%);
             color: white;
             font-family: Arial, Helvetica, sans-serif;
         }
+
         .box {
             background: #101b2f;
             border-radius: 22px;
             padding: 25px;
             border: 1px solid rgba(29,211,255,0.18);
+            margin-bottom: 22px;
         }
+
         .title {
             color: #1dd3ff;
             font-weight: 900;
         }
+
         .table {
             color: white;
         }
+
         .table thead th {
             color: #1dd3ff;
         }
+
         .estado-bloqueado {
             color: #ff6b6b;
             font-weight: 700;
         }
+
         .estado-activo {
             color: #00ff88;
             font-weight: 700;
         }
+
         .rol-admin {
             color: #ffc107;
             font-weight: 700;
         }
+
         .rol-seller {
             color: #8ceeff;
             font-weight: 700;
         }
+
         .fila-click {
             cursor: pointer;
         }
+
         .fila-click:hover {
             background: rgba(29, 211, 255, 0.08) !important;
         }
+
+        .form-control {
+            background: #0a1322;
+            color: white;
+            border: 1px solid #294160;
+        }
+
+        .form-control:focus {
+            background: #0a1322;
+            color: white;
+            border-color: #1dd3ff;
+            box-shadow: none;
+        }
+
+        .badge-activa {
+            background: rgba(0,255,136,0.15);
+            color: #92ffcf;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-weight: 700;
+        }
+
+        .badge-inactiva {
+            background: rgba(255,107,107,0.15);
+            color: #ff9b9b;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-weight: 700;
+        }
     </style>
 </head>
+
 <body>
     <div class="container py-4">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
@@ -77,6 +119,78 @@
         {% endwith %}
 
         <div class="box">
+            <h4 class="mb-3">Administrar categorías dinámicas</h4>
+
+            <form method="POST" action="/admin/categories/create" class="row g-2 mb-4">
+                <div class="col-md-9">
+                    <input
+                        type="text"
+                        name="nombre"
+                        class="form-control"
+                        placeholder="Ej: Plomería, Técnico en celulares, Reparación de electrodomésticos..."
+                        required
+                    >
+                </div>
+
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-info text-dark fw-bold w-100">
+                        Agregar categoría
+                    </button>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Categoría</th>
+                            <th>Slug</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for cat in categorias %}
+                            <tr>
+                                <td>{{ cat["id"] }}</td>
+                                <td>{{ cat["nombre"] }}</td>
+                                <td>{{ cat["slug"] }}</td>
+                                <td>
+                                    {% if cat["active"] == 1 %}
+                                        <span class="badge-activa">Activa</span>
+                                    {% else %}
+                                        <span class="badge-inactiva">Inactiva</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <form method="POST" action="/admin/categories/{{ cat['id'] }}/toggle">
+                                            {% if cat["active"] == 1 %}
+                                                <button class="btn btn-sm btn-warning" type="submit">Desactivar</button>
+                                            {% else %}
+                                                <button class="btn btn-sm btn-success" type="submit">Activar</button>
+                                            {% endif %}
+                                        </form>
+
+                                        <form method="POST" action="/admin/categories/{{ cat['id'] }}/delete" onsubmit="return confirm('¿Eliminar esta categoría? Solo se elimina si no tiene publicaciones.')">
+                                            <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5">No hay categorías cargadas.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="box">
             <h4 class="mb-3">Usuarios registrados</h4>
 
             <div class="table-responsive">
@@ -92,12 +206,14 @@
                             <th>Acciones</th>
                         </tr>
                     </thead>
+
                     <tbody>
                         {% for user in usuarios %}
                             <tr class="fila-click" onclick="window.location='/admin/user/{{ user['id'] }}'">
                                 <td>{{ user["id"] }}</td>
                                 <td>{{ user["email"] or "-" }}</td>
                                 <td>{{ user["telefono"] or "-" }}</td>
+
                                 <td>
                                     {% if user["role"] == "admin" %}
                                         <span class="rol-admin">Administrador</span>
@@ -105,6 +221,7 @@
                                         <span class="rol-seller">Vendedor</span>
                                     {% endif %}
                                 </td>
+
                                 <td>
                                     {% if user["blocked"] == 1 %}
                                         <span class="estado-bloqueado">Bloqueado</span>
@@ -112,19 +229,17 @@
                                         <span class="estado-activo">Activo</span>
                                     {% endif %}
                                 </td>
+
                                 <td>{{ user["created_at"] }}</td>
+
                                 <td onclick="event.stopPropagation()">
                                     {% if user["id"] == session["user_id"] %}
                                         <span class="text-secondary">Tu cuenta</span>
                                     {% else %}
                                         {% if user["blocked"] == 1 %}
-                                            <a href="/admin/user/{{ user['id'] }}/unblock" class="btn btn-sm btn-success">
-                                                Desbloquear
-                                            </a>
+                                            <a href="/admin/user/{{ user['id'] }}/unblock" class="btn btn-sm btn-success">Desbloquear</a>
                                         {% else %}
-                                            <a href="/admin/user/{{ user['id'] }}/block" class="btn btn-sm btn-warning">
-                                                Bloquear
-                                            </a>
+                                            <a href="/admin/user/{{ user['id'] }}/block" class="btn btn-sm btn-warning">Bloquear</a>
                                         {% endif %}
                                     {% endif %}
                                 </td>

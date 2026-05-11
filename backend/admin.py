@@ -1,8 +1,5 @@
-# =========================================================
-# PANEL ADMINISTRADOR
-# =========================================================
-
 import os
+import re
 import uuid
 from werkzeug.utils import secure_filename
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request, current_app
@@ -16,6 +13,18 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 
 def es_admin():
     return session.get("role") == "admin"
+
+
+def crear_slug(texto):
+    texto = (texto or "").strip().lower()
+    reemplazos = {
+        "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n"
+    }
+    for k, v in reemplazos.items():
+        texto = texto.replace(k, v)
+    texto = re.sub(r"[^a-z0-9]+", "-", texto)
+    texto = texto.strip("-")
+    return texto or "categoria"
 
 
 def archivo_permitido(filename):
@@ -55,20 +64,125 @@ def admin_dashboard():
     c = conn.cursor()
 
     usuarios = c.execute("""
-        SELECT
-            id,
-            email,
-            telefono,
-            role,
-            blocked,
-            created_at
+        SELECT id, email, telefono, role, blocked, created_at
         FROM users
         ORDER BY id DESC
     """).fetchall()
 
+    categorias = c.execute("""
+        SELECT *
+        FROM categories
+        ORDER BY active DESC, nombre COLLATE NOCASE ASC
+    """).fetchall()
+
     conn.close()
 
-    return render_template("admin_dashboard.html", usuarios=usuarios)
+    return render_template("admin_dashboard.html", usuarios=usuarios, categorias=categorias)
+
+
+@admin_routes.route("/admin/categories/create", methods=["POST"])
+def create_category():
+    if "user_id" not in session or not es_admin():
+        flash("No tenés permisos para esta acción.", "danger")
+        return redirect(url_for("auth.login"))
+
+    nombre = request.form.get("nombre", "").strip()
+
+    if not nombre:
+        flash("Ingresá el nombre de la categoría.", "danger")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    slug = crear_slug(nombre)
+
+    conn = get_db()
+    c = conn.cursor()
+
+    existe = c.execute("""
+        SELECT id FROM categories
+        WHERE nombre = ? OR slug = ?
+    """, (nombre, slug)).fetchone()
+
+    if existe:
+        conn.close()
+        flash("Esa categoría ya existe.", "warning")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    c.execute("""
+        INSERT INTO categories (nombre, slug, active)
+        VALUES (?, ?, 1)
+    """, (nombre, slug))
+
+    conn.commit()
+    conn.close()
+
+    flash("Categoría creada correctamente.", "success")
+    return redirect(url_for("admin.admin_dashboard"))
+
+
+@admin_routes.route("/admin/categories/<int:category_id>/toggle", methods=["POST"])
+def toggle_category(category_id):
+    if "user_id" not in session or not es_admin():
+        flash("No tenés permisos para esta acción.", "danger")
+        return redirect(url_for("auth.login"))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    categoria = c.execute("SELECT * FROM categories WHERE id = ?", (category_id,)).fetchone()
+
+    if not categoria:
+        conn.close()
+        flash("Categoría no encontrada.", "danger")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    nuevo_estado = 0 if categoria["active"] == 1 else 1
+
+    c.execute("""
+        UPDATE categories
+        SET active = ?
+        WHERE id = ?
+    """, (nuevo_estado, category_id))
+
+    conn.commit()
+    conn.close()
+
+    flash("Categoría actualizada.", "success")
+    return redirect(url_for("admin.admin_dashboard"))
+
+
+@admin_routes.route("/admin/categories/<int:category_id>/delete", methods=["POST"])
+def delete_category(category_id):
+    if "user_id" not in session or not es_admin():
+        flash("No tenés permisos para esta acción.", "danger")
+        return redirect(url_for("auth.login"))
+
+    conn = get_db()
+    c = conn.cursor()
+
+    categoria = c.execute("SELECT * FROM categories WHERE id = ?", (category_id,)).fetchone()
+
+    if not categoria:
+        conn.close()
+        flash("Categoría no encontrada.", "danger")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    usados = c.execute("""
+        SELECT COUNT(*) AS total
+        FROM products
+        WHERE tipo_publicacion = ?
+    """, (categoria["slug"],)).fetchone()["total"]
+
+    if usados > 0:
+        conn.close()
+        flash("No se puede eliminar porque ya tiene publicaciones. Podés desactivarla.", "warning")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    c.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+    conn.commit()
+    conn.close()
+
+    flash("Categoría eliminada.", "success")
+    return redirect(url_for("admin.admin_dashboard"))
 
 
 @admin_routes.route("/admin/user/<int:user_id>")
@@ -84,15 +198,7 @@ def admin_user_detail(user_id):
     c = conn.cursor()
 
     usuario = c.execute("""
-        SELECT
-            id,
-            email,
-            telefono,
-            role,
-            blocked,
-            tienda_nombre,
-            ciudad,
-            created_at
+        SELECT id, email, telefono, role, blocked, tienda_nombre, ciudad, created_at
         FROM users
         WHERE id = ?
     """, (user_id,)).fetchone()
@@ -116,12 +222,9 @@ def admin_user_detail(user_id):
 
 @admin_routes.route("/admin/user/<int:user_id>/block")
 def block_user(user_id):
-    if "user_id" not in session:
-        return redirect(url_for("auth.login"))
-
-    if not es_admin():
+    if "user_id" not in session or not es_admin():
         flash("No tenés permisos para esta acción.", "danger")
-        return redirect(url_for("products.seller_dashboard"))
+        return redirect(url_for("auth.login"))
 
     if user_id == session.get("user_id"):
         flash("No podés bloquear tu propia cuenta.", "danger")
@@ -130,26 +233,13 @@ def block_user(user_id):
     conn = get_db()
     c = conn.cursor()
 
-    usuario = c.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
-
-    if not usuario:
-        conn.close()
-        flash("Usuario no encontrado.", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
-
-    c.execute("""
-        UPDATE users
-        SET blocked = 1
-        WHERE id = ?
-    """, (user_id,))
-
+    c.execute("UPDATE users SET blocked = 1 WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
 
     flash("Usuario bloqueado correctamente.", "success")
 
-    next_url = request.args.get("next")
-    if next_url == "detail":
+    if request.args.get("next") == "detail":
         return redirect(url_for("admin.admin_user_detail", user_id=user_id))
 
     return redirect(url_for("admin.admin_dashboard"))
@@ -157,36 +247,20 @@ def block_user(user_id):
 
 @admin_routes.route("/admin/user/<int:user_id>/unblock")
 def unblock_user(user_id):
-    if "user_id" not in session:
-        return redirect(url_for("auth.login"))
-
-    if not es_admin():
+    if "user_id" not in session or not es_admin():
         flash("No tenés permisos para esta acción.", "danger")
-        return redirect(url_for("products.seller_dashboard"))
+        return redirect(url_for("auth.login"))
 
     conn = get_db()
     c = conn.cursor()
 
-    usuario = c.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
-
-    if not usuario:
-        conn.close()
-        flash("Usuario no encontrado.", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
-
-    c.execute("""
-        UPDATE users
-        SET blocked = 0
-        WHERE id = ?
-    """, (user_id,))
-
+    c.execute("UPDATE users SET blocked = 0 WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
 
     flash("Usuario desbloqueado correctamente.", "success")
 
-    next_url = request.args.get("next")
-    if next_url == "detail":
+    if request.args.get("next") == "detail":
         return redirect(url_for("admin.admin_user_detail", user_id=user_id))
 
     return redirect(url_for("admin.admin_dashboard"))
@@ -194,12 +268,9 @@ def unblock_user(user_id):
 
 @admin_routes.route("/admin/import-post", methods=["GET", "POST"])
 def admin_import_post():
-    if "user_id" not in session:
-        return redirect(url_for("auth.login"))
-
-    if not es_admin():
+    if "user_id" not in session or not es_admin():
         flash("No tenés permisos para esta sección.", "danger")
-        return redirect(url_for("products.seller_dashboard"))
+        return redirect(url_for("auth.login"))
 
     extracted = None
 
@@ -210,22 +281,15 @@ def admin_import_post():
             source_url = request.form.get("source_url", "").strip()
             source_type = request.form.get("source_type", "").strip()
 
-            if not source_url:
-                flash("Pegá un link para analizar.", "danger")
-                return render_template("admin_import_post.html", extracted=None)
-
             try:
                 extracted = analyze_publication_link(source_url, source_type)
-                flash("Link analizado correctamente. Revisá y corregí antes de publicar.", "success")
+                flash("Link analizado correctamente.", "success")
             except Exception as e:
                 flash(f"No se pudo analizar el link. Error: {str(e)}", "danger")
-                return render_template("admin_import_post.html", extracted=None)
 
             return render_template("admin_import_post.html", extracted=extracted)
 
         if action == "publish":
-            source_type = request.form.get("source_type", "").strip()
-            source_url = request.form.get("source_url", "").strip()
             titulo = request.form.get("titulo", "").strip()
             descripcion = request.form.get("descripcion", "").strip()
             imagen = request.form.get("imagen", "").strip()
@@ -237,84 +301,38 @@ def admin_import_post():
             facebook_link = request.form.get("facebook_link", "").strip()
             imagen_file = request.files.get("imagen_file")
 
-            if not titulo:
-                flash("El título es obligatorio.", "danger")
-                extracted = request.form.to_dict()
-                return render_template("admin_import_post.html", extracted=extracted)
-
-            if not tienda_nombre:
-                flash("El nombre de la tienda o usuario es obligatorio.", "danger")
-                extracted = request.form.to_dict()
-                return render_template("admin_import_post.html", extracted=extracted)
-
-            if not ciudad:
-                flash("La ciudad es obligatoria.", "danger")
-                extracted = request.form.to_dict()
-                return render_template("admin_import_post.html", extracted=extracted)
-
             precio = 0
             if precio_raw:
                 try:
                     precio = float(precio_raw.replace(".", "").replace(",", "."))
                 except ValueError:
-                    flash("El precio no tiene un formato válido.", "danger")
-                    extracted = request.form.to_dict()
-                    return render_template("admin_import_post.html", extracted=extracted)
-
-            descripcion_final = descripcion.strip()
-
-            if source_url:
-                if source_type == "instagram" and not instagram_link:
-                    instagram_link = source_url
-                elif source_type == "facebook" and not facebook_link:
-                    facebook_link = source_url
+                    precio = 0
 
             if imagen_file and imagen_file.filename:
                 imagen_subida = guardar_imagen_admin(imagen_file)
-                if imagen_subida is None:
-                    flash("La imagen debe ser PNG, JPG, JPEG o WEBP.", "danger")
-                    extracted = request.form.to_dict()
-                    return render_template("admin_import_post.html", extracted=extracted)
-                imagen = imagen_subida
+                if imagen_subida:
+                    imagen = imagen_subida
 
             conn = get_db()
             c = conn.cursor()
 
             c.execute("""
                 INSERT INTO products (
-                    user_id,
-                    titulo,
-                    descripcion,
-                    precio,
-                    imagen,
-                    tienda_nombre,
-                    ciudad,
-                    whatsapp_link,
-                    instagram_link,
-                    facebook_link,
-                    active,
-                    sold
+                    user_id, tipo_publicacion, rubro, titulo, descripcion, precio,
+                    imagen, tienda_nombre, ciudad, whatsapp_link, instagram_link,
+                    facebook_link, active, sold
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                session["user_id"],
-                titulo,
-                descripcion_final,
-                precio,
-                imagen,
-                tienda_nombre,
-                ciudad,
-                whatsapp_link,
-                instagram_link,
-                facebook_link,
-                1,
-                0
+                session["user_id"], "venta", "", titulo, descripcion, precio,
+                imagen, tienda_nombre, ciudad, whatsapp_link, instagram_link,
+                facebook_link, 1, 0
             ))
 
             conn.commit()
             conn.close()
 
-            flash("Publicación importada y publicada correctamente.", "success")
+            flash("Publicación importada correctamente.", "success")
             return redirect(url_for("admin.admin_import_post"))
 
     return render_template("admin_import_post.html", extracted=extracted)
@@ -322,60 +340,32 @@ def admin_import_post():
 
 @admin_routes.route("/admin/import-web", methods=["GET", "POST"])
 def admin_import_web():
-    if "user_id" not in session:
-        return redirect(url_for("auth.login"))
-
-    if not es_admin():
+    if "user_id" not in session or not es_admin():
         flash("No tenés permisos para esta sección.", "danger")
-        return redirect(url_for("products.seller_dashboard"))
+        return redirect(url_for("auth.login"))
 
     extracted = None
 
     if request.method == "POST":
         action = request.form.get("action", "").strip()
 
-        # =====================================================
-        # ANALIZAR WEB
-        # =====================================================
         if action == "analyze":
             source_url = request.form.get("source_url", "").strip()
 
-            if not source_url:
-                flash("Pegá una URL de página web.", "danger")
-                return render_template("admin_import_web.html", extracted=None)
-
             try:
                 extracted = analyze_web_catalog(source_url)
-                if not extracted.get("products"):
-                    flash("La web se analizó, pero no se pudieron detectar productos claros.", "warning")
-                else:
-                    flash(f"Se detectaron {len(extracted.get('products', []))} productos. Revisá y publicá.", "success")
+                flash("Web analizada correctamente.", "success")
             except Exception as e:
                 flash(f"No se pudo analizar la web. Error: {str(e)}", "danger")
-                return render_template("admin_import_web.html", extracted=None)
 
             return render_template("admin_import_web.html", extracted=extracted)
 
-        # =====================================================
-        # PUBLICAR TODOS LOS SELECCIONADOS
-        # =====================================================
         if action == "publish_all":
-            source_url = request.form.get("source_url", "").strip()
             tienda_nombre = request.form.get("tienda_nombre", "").strip()
             ciudad = request.form.get("ciudad", "").strip()
             whatsapp_link = request.form.get("whatsapp_link", "").strip()
             instagram_link = request.form.get("instagram_link", "").strip()
             facebook_link = request.form.get("facebook_link", "").strip()
-
-            if not tienda_nombre:
-                flash("El nombre de la tienda es obligatorio.", "danger")
-                extracted = request.form.to_dict(flat=False)
-                return render_template("admin_import_web.html", extracted=None)
-
-            if not ciudad:
-                flash("La ciudad es obligatoria.", "danger")
-                extracted = request.form.to_dict(flat=False)
-                return render_template("admin_import_web.html", extracted=None)
 
             titulos = request.form.getlist("producto_titulo[]")
             descripciones = request.form.getlist("producto_descripcion[]")
@@ -383,10 +373,6 @@ def admin_import_web():
             imagenes = request.form.getlist("producto_imagen[]")
             links = request.form.getlist("producto_link[]")
             seleccionados = request.form.getlist("producto_selected[]")
-
-            if not titulos:
-                flash("No hay productos para publicar.", "danger")
-                return redirect(url_for("admin.admin_import_web"))
 
             conn = get_db()
             c = conn.cursor()
@@ -403,9 +389,6 @@ def admin_import_web():
                 imagen = (imagenes[i] or "").strip()
                 link_origen = (links[i] or "").strip()
 
-                if not titulo:
-                    continue
-
                 precio = 0
                 if precio_raw:
                     try:
@@ -413,42 +396,20 @@ def admin_import_web():
                     except ValueError:
                         precio = 0
 
-                descripcion_final = descripcion
                 if link_origen:
-                    if descripcion_final:
-                        descripcion_final += f"\n\nProducto original: {link_origen}"
-                    else:
-                        descripcion_final = f"Producto original: {link_origen}"
+                    descripcion += f"\n\nProducto original: {link_origen}"
 
                 c.execute("""
                     INSERT INTO products (
-                        user_id,
-                        titulo,
-                        descripcion,
-                        precio,
-                        imagen,
-                        tienda_nombre,
-                        ciudad,
-                        whatsapp_link,
-                        instagram_link,
-                        facebook_link,
-                        active,
-                        sold
+                        user_id, tipo_publicacion, rubro, titulo, descripcion, precio,
+                        imagen, tienda_nombre, ciudad, whatsapp_link, instagram_link,
+                        facebook_link, active, sold
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    session["user_id"],
-                    titulo,
-                    descripcion_final,
-                    precio,
-                    imagen,
-                    tienda_nombre,
-                    ciudad,
-                    whatsapp_link,
-                    instagram_link,
-                    facebook_link,
-                    1,
-                    0
+                    session["user_id"], "venta", "", titulo, descripcion, precio,
+                    imagen, tienda_nombre, ciudad, whatsapp_link, instagram_link,
+                    facebook_link, 1, 0
                 ))
 
                 publicados += 1
@@ -456,7 +417,7 @@ def admin_import_web():
             conn.commit()
             conn.close()
 
-            flash(f"Se publicaron {publicados} productos en OFERTAS SANTIAGO.", "success")
+            flash(f"Se publicaron {publicados} productos.", "success")
             return redirect(url_for("admin.admin_import_web"))
 
     return render_template("admin_import_web.html", extracted=extracted)
