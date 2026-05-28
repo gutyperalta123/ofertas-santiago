@@ -5,11 +5,16 @@
 import os
 from flask import Flask, render_template
 from flask_cors import CORS
+from dotenv import load_dotenv
 
 from database import init_db
 from products import product_routes
 from auth import auth_routes
 from admin import admin_routes
+
+# Carga variables desde backend/.env cuando estás trabajando localmente.
+# En Render también funciona con las Environment Variables.
+load_dotenv()
 
 app = Flask(
     __name__,
@@ -17,7 +22,11 @@ app = Flask(
     static_folder="static"
 )
 
-app.secret_key = "ofertas_santiago_clave"
+# IMPORTANTE:
+# No dejar claves reales escritas en GitHub.
+# En producción configurá SECRET_KEY en Render.
+app.secret_key = os.getenv("SECRET_KEY", "clave-dev-solo-local-cambiar")
+
 app.config["UPLOAD_FOLDER"] = os.path.join(app.static_folder, "uploads")
 
 CORS(app)
@@ -34,8 +43,6 @@ app.register_blueprint(admin_routes)
 @app.route("/")
 def home():
     return render_template("index.html")
-
-
 
 
 if __name__ == "__main__":

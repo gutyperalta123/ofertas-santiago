@@ -1,8 +1,22 @@
-__pycache__/ 
-*.pyc 
-*.pyo 
-*.pyd 
-backend/__pycache__/ 
-backend/database.db 
-backend/static/uploads/ 
-.env 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entorno local
+.env
+backend/.env
+venv/
+.venv/
+
+# Base de datos local
+backend/database.db
+*.sqlite3
+
+# Archivos subidos por usuarios
+backend/static/uploads/
+
+# Sistema
+.DS_Store
+Thumbs.db

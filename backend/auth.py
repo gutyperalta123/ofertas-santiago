@@ -9,7 +9,6 @@ from database import get_db
 
 auth_routes = Blueprint("auth", __name__)
 
-
 EMAIL_REGEX = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 PHONE_REGEX = re.compile(r"^\+?\d{8,15}$")
 
@@ -39,15 +38,13 @@ def verificar_password(password_guardada: str, password_ingresada: str) -> bool:
     if not password_guardada:
         return False
 
-    # Compatibilidad con tu admin actual en texto plano
-    if password_guardada == password_ingresada:
-        return True
-
-    # Compatibilidad con usuarios nuevos en hash
+    # Usuarios actuales/nuevos con contraseña hasheada.
     if password_guardada.startswith("scrypt:") or password_guardada.startswith("pbkdf2:"):
         return check_password_hash(password_guardada, password_ingresada)
 
-    return False
+    # Compatibilidad temporal por si quedó algún usuario viejo en texto plano.
+    # No crea usuarios nuevos así; solo evita romper cuentas antiguas.
+    return password_guardada == password_ingresada
 
 
 @auth_routes.route("/login", methods=["GET", "POST"])
@@ -90,7 +87,6 @@ def login():
         session["tienda_nombre"] = user["tienda_nombre"]
         session["ciudad"] = user["ciudad"]
 
-        # Si es admin, entra al panel admin
         if user["role"] == "admin":
             return redirect(url_for("admin.admin_dashboard"))
 
@@ -126,8 +122,15 @@ def register():
         conn = get_db()
         c = conn.cursor()
 
-        existe_email = c.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
-        existe_telefono = c.execute("SELECT id FROM users WHERE telefono = ?", (telefono,)).fetchone()
+        existe_email = c.execute(
+            "SELECT id FROM users WHERE email = ?",
+            (email,)
+        ).fetchone()
+
+        existe_telefono = c.execute(
+            "SELECT id FROM users WHERE telefono = ?",
+            (telefono,)
+        ).fetchone()
 
         if existe_email:
             conn.close()

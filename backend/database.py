@@ -1,6 +1,13 @@
+import os
 import sqlite3
+from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash
 
-DB_NAME = "database.db"
+# Carga backend/.env en local.
+load_dotenv()
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_NAME = os.path.join(BASE_DIR, "database.db")
 
 
 def get_db():
@@ -18,6 +25,64 @@ def add_column_if_missing(cursor, table_name, column_sql):
     column_name = column_sql.split()[0]
     if not column_exists(cursor, table_name, column_name):
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}")
+
+
+def crear_o_actualizar_admin(cursor):
+    """
+    Crea o actualiza el usuario administrador usando variables de entorno.
+    Así no queda email, teléfono ni contraseña escritos dentro de GitHub.
+    """
+    admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+    admin_phone = os.getenv("ADMIN_PHONE", "").strip()
+    admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+
+    # Si no configuraste el .env, no crea admin automático.
+    # Esto evita que GitHub tenga credenciales fijas.
+    if not admin_email or not admin_phone or not admin_password:
+        return
+
+    password_hash = generate_password_hash(admin_password)
+
+    admin = cursor.execute(
+        "SELECT id FROM users WHERE email = ?",
+        (admin_email,)
+    ).fetchone()
+
+    if admin:
+        # Si el admin ya existe, actualiza teléfono, password hasheado y rol.
+        cursor.execute("""
+            UPDATE users
+            SET telefono = ?,
+                password = ?,
+                tienda_nombre = ?,
+                ciudad = ?,
+                role = ?,
+                blocked = ?
+            WHERE email = ?
+        """, (
+            admin_phone,
+            password_hash,
+            "OFERTAS SANTIAGO",
+            "Santiago del Estero",
+            "admin",
+            0,
+            admin_email
+        ))
+    else:
+        cursor.execute("""
+            INSERT INTO users (
+                email, telefono, password, tienda_nombre, ciudad, role, blocked
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            admin_email,
+            admin_phone,
+            password_hash,
+            "OFERTAS SANTIAGO",
+            "Santiago del Estero",
+            "admin",
+            0
+        ))
 
 
 def init_db():
@@ -90,33 +155,18 @@ def init_db():
     ]
 
     for nombre, slug in categorias_iniciales:
-        existe = c.execute("SELECT id FROM categories WHERE slug = ?", (slug,)).fetchone()
+        existe = c.execute(
+            "SELECT id FROM categories WHERE slug = ?",
+            (slug,)
+        ).fetchone()
+
         if not existe:
             c.execute("""
                 INSERT INTO categories (nombre, slug, active)
                 VALUES (?, ?, 1)
             """, (nombre, slug))
 
-    admin = c.execute(
-        "SELECT id FROM users WHERE email = ?",
-        ("gutyperalta123@gmail.com",)
-    ).fetchone()
-
-    if not admin:
-        c.execute("""
-            INSERT INTO users (
-                email, telefono, password, tienda_nombre, ciudad, role, blocked
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            "gutyperalta123@gmail.com",
-            "3850000000",
-            "Sukoisu30mk2",
-            "OFERTAS SANTIAGO",
-            "Santiago del Estero",
-            "admin",
-            0
-        ))
+    crear_o_actualizar_admin(c)
 
     conn.commit()
     conn.close()
